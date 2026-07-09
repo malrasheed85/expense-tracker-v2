@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>متتبع الصرف الشهري</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d0f14;
+  --bg2:#111319;
+  --card:#171a22;
+  --card2:#1d212b;
+  --line:#262b37;
+  --text:#eceef2;
+  --muted:#8a90a3;
+  --muted2:#5f6577;
+  --accent:#6c8cff;
+  --accent-dim:#3a4b8f;
+  --green:#2ecc71;
+  --orange:#f5a623;
+  --orange-dark:#e0670f;
+  --red:#e5484d;
+  --blue:#4d9de5;
+  --weekend:#232a3d;
+  --radius:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Cairo',system-ui,sans-serif;
+  min-height:100vh;
+  padding-bottom:40px;
+}
+.wrap{max-width:520px;margin:0 auto;padding:16px 14px 0;}
+.mono{font-family:'JetBrains Mono','Cairo',monospace;}
+
+/* header */
+header.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+header.top h1{font-size:19px;font-weight:800;margin:0;}
+.salary-pill{
+  background:var(--card2);border:1px solid var(--line);border-radius:14px;
+  padding:6px 12px;font-size:10px;color:var(--muted);display:flex;flex-direction:column;
+  align-items:flex-end;gap:1px;white-space:nowrap;
+}
+.salary-pill .sp-count{font-size:12px;color:var(--text);}
+.salary-pill .sp-count b{color:var(--accent);}
+.salary-pill .sp-date{font-size:10px;color:var(--muted2);}
+
+/* metrics */
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+.metric{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:12px 8px;text-align:center;
+}
+.metric .lbl{font-size:11px;color:var(--muted);margin-bottom:4px;}
+.metric .val{font-size:19px;font-weight:800;}
+.metric.limit .val{color:var(--text);}
+.metric.spent .val{transition:color .2s;}
+.metric.saved .val{color:var(--blue);}
+
+/* card generic */
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px;margin-bottom:14px;
+}
+.card h2{font-size:14px;margin:0 0 12px;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:6px;}
+
+/* categories grid */
+.cats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;}
+.cat-btn{
+  background:var(--card2);border:1px solid var(--line);border-radius:10px;
+  padding:8px 3px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  cursor:pointer;transition:.15s;
+}
+.cat-btn .ic{font-size:16px;line-height:1;}
+.cat-btn .nm{font-size:9.5px;color:var(--muted);text-align:center;line-height:1.1;}
+.cat-btn.active{border-color:var(--accent);background:rgba(108,140,255,.12);}
+.cat-btn.active .nm{color:var(--text);}
+
+.subs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.sub-chip{
+  background:var(--card2);border:1px solid var(--line);border-radius:999px;
+  padding:6px 12px;font-size:12px;color:var(--muted);cursor:pointer;
+}
+.sub-chip.active{border-color:var(--accent);color:var(--text);background:rgba(108,140,255,.12);}
+
+.form-row{display:flex;gap:8px;margin-bottom:10px;}
+input[type=number],input[type=text]{
+  background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+  color:var(--text);padding:10px 12px;font-size:14px;font-family:inherit;width:100%;
+}
+input[type=number]::-webkit-inner-spin-button{opacity:.6;}
+input:focus{outline:none;border-color:var(--accent);}
+.amount-wrap{position:relative;flex:1;}
+.amount-wrap span{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px;}
+
+.btn{
+  border:none;border-radius:10px;padding:10px 16px;font-family:inherit;font-weight:700;
+  font-size:13.5px;cursor:pointer;transition:.15s;
+}
+.btn-primary{background:var(--accent);color:#0d0f14;width:100%;padding:12px;font-size:14px;}
+.btn-primary:disabled{background:var(--accent-dim);color:#8892b0;cursor:not-allowed;}
+.btn-ghost{background:var(--card2);color:var(--text);border:1px solid var(--line);}
+.btn-danger-ghost{background:var(--card2);color:var(--red);border:1px solid var(--line);}
+.actions-row{display:flex;gap:8px;margin-bottom:14px;}
+.actions-row .btn{flex:1;}
+
+/* chart */
+.chart-scroll{overflow-x:auto;padding-bottom:4px;}
+.chart-scroll::-webkit-scrollbar{height:5px;}
+.chart-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:10px;}
+.chart-inner{display:flex;gap:10px;align-items:flex-end;height:170px;position:relative;padding-top:10px;min-width:100%;}
+.limit-line{
+  position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--muted2);
+  z-index:0;
+}
+.limit-line span{position:absolute;left:0;top:-14px;font-size:9px;color:var(--muted2);}
+.day-col{
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  min-width:40px;flex:0 0 auto;height:100%;position:relative;z-index:1;cursor:pointer;
+}
+.bars{display:flex;gap:3px;align-items:flex-end;height:130px;}
+.bar{
+  width:14px;border-radius:4px 4px 2px 2px;position:relative;display:flex;align-items:flex-end;
+  justify-content:center;min-height:4px;transition:.2s;
+}
+.bar span{
+  position:absolute;top:-16px;font-size:9px;color:#fff;font-weight:700;white-space:nowrap;
+}
+.bar.spent{background:var(--muted2);}
+.bar.saved{background:var(--blue);}
+.day-col .dlabel{font-size:10px;color:var(--muted);margin-top:6px;text-align:center;}
+.day-col .dlabel b{display:block;font-size:11px;color:var(--text);}
+.day-col.weekend .dlabel b{color:var(--accent);}
+.day-col.today .dlabel b{color:var(--green);}
+.day-col.selected{background:rgba(255,255,255,.04);border-radius:8px;}
+
+.daydetail{
+  margin-top:10px;border-top:1px solid var(--line);padding-top:10px;font-size:13px;
+}
+.daydetail .dd-head{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:6px;font-size:12px;}
+.exp-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px;}
+.exp-row:last-child{border-bottom:none;}
+.exp-row .ei{display:flex;align-items:center;gap:8px;}
+.exp-row .ei .ic{font-size:14px;}
+.exp-row .meta{color:var(--muted);font-size:11px;}
+.exp-row .amt{font-weight:700;}
+.empty-note{color:var(--muted2);font-size:12.5px;text-align:center;padding:10px 0;}
+
+/* search */
+.search-box{position:relative;margin-bottom:14px;}
+.search-box input{padding-left:34px;}
+.search-box .sic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;}
+.search-results{margin-top:10px;}
+
+/* log */
+.month-block{margin-bottom:10px;}
+.month-head{
+  display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+  background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+}
+.month-head .mh-l{font-size:13px;font-weight:700;}
+.month-head .mh-r{font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;}
+.month-head .chev{transition:.2s;color:var(--muted);}
+.month-head.open .chev{transform:rotate(90deg);}
+.month-days{padding:6px 2px 0;display:none;}
+.month-days.open{display:block;}
+.day-row{
+  display:flex;justify-content:space-between;align-items:center;padding:9px 10px;
+  border-bottom:1px solid var(--line);cursor:pointer;
+}
+.day-row:last-child{border-bottom:none;}
+.day-row.weekend{background:rgba(108,140,255,.05);border-radius:8px;}
+.day-row .dr-l{display:flex;align-items:center;gap:8px;}
+.day-row .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.day-row .dr-date{font-size:13px;}
+.day-row .dr-date .wd{color:var(--muted);font-size:11px;margin-right:4px;}
+.day-row .dr-r{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;}
+.day-row .status{font-size:10px;color:var(--muted2);font-weight:400;}
+.day-expenses{padding:2px 10px 10px;display:none;}
+.day-expenses.open{display:block;}
+
+.badge{font-size:10px;padding:2px 7px;border-radius:999px;background:var(--card2);color:var(--muted);}
+
+.hint{font-size:11px;color:var(--muted2);text-align:center;margin:10px 0 20px;line-height:1.7;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>متتبع الصرف الشهري</h1>
+    <div class="salary-pill">
+      <div class="sp-count">💰 الراتب بعد <b id="salaryCountdown">--</b> يوم</div>
+      <div class="sp-date" id="salaryDate">--</div>
+    </div>
+  </header>
+
+  <div class="metrics">
+    <div class="metric limit">
+      <div class="lbl">الحد اليومي</div>
+      <div class="val mono">150</div>
+    </div>
+    <div class="metric spent">
+      <div class="lbl">المصروف</div>
+      <div class="val mono" id="mSpent">0</div>
+    </div>
+    <div class="metric saved">
+      <div class="lbl">التوفير</div>
+      <div class="val mono" id="mSaved">0</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>➕ إضافة مصروف</h2>
+    <div class="cats" id="catsGrid"></div>
+    <div class="subs" id="subsRow" style="display:none;"></div>
+    <div class="form-row">
+      <div class="amount-wrap">
+        <input type="number" id="amountInput" placeholder="0" min="0" step="0.5" inputmode="decimal">
+        <span>ريال</span>
+      </div>
+    </div>
+    <div class="form-row">
+      <input type="text" id="noteInput" placeholder="ملاحظة (اختياري)">
+    </div>
+    <button class="btn btn-primary" id="addBtn" disabled>أضف المصروف</button>
+  </div>
+
+  <div class="card">
+    <h2>📊 آخر ٧ أيام</h2>
+    <div class="chart-scroll" id="chartScroll">
+      <div class="chart-inner" id="chartInner"></div>
+    </div>
+    <div id="dayDetail"></div>
+  </div>
+
+  <div class="actions-row">
+    <button class="btn btn-ghost" id="closeDayBtn">🔒 إقفال اليوم</button>
+    <button class="btn btn-danger-ghost" id="closeMonthBtn">📕 إقفال الشهر</button>
+  </div>
+
+  <div class="search-box">
+    <span class="sic">🔍</span>
+    <input type="text" id="searchInput" placeholder="ابحث بالوصف أو الفئة أو التاريخ">
+  </div>
+  <div class="search-results" id="searchResults"></div>
+
+  <div class="card" id="logCard">
+    <h2>🗂️ السجل</h2>
+    <div id="logContainer"></div>
+  </div>
+
+  <div class="hint">جميع بياناتك محفوظة على هذا الجهاز فقط (localStorage) — لا يوجد اتصال بخادم.</div>
+</div>
+
+<script>
+/* ============ إعدادات ثابتة ============ */
+const DAILY_LIMIT = 150;
+const START_DATE = '2026-07-27';
+const SALARY_DAY = 27; // افتراض: الراتب يوم 27 من كل شهر ميلادي — عدّل SALARY_DAY لو مختلف
+const STORAGE_KEY = 'msarraf_data_v1';
+
+const CATEGORIES = [
+  {id:'sadaqah',   name:'صدقة',            icon:'🤲', subs:[]},
+  {id:'food',      name:'طعام',            icon:'🥗', subs:['فطور','غداء','عشاء']},
+  {id:'coffee',    name:'قهوة وشاي',        icon:'☕', subs:['قهوة','شاي']},
+  {id:'car',       name:'سيارة',           icon:'🚗', subs:['بنزين','غسيل','زيت','صيانة']},
+  {id:'laundry',   name:'مغسلة',           icon:'👕', subs:[]},
+  {id:'cleaning',  name:'تنظيف الشقة',      icon:'🧹', subs:[]},
+  {id:'pharmacy',  name:'صيدلية',          icon:'💊', subs:[]},
+  {id:'market',    name:'سوبر ماركت',       icon:'🛒', subs:[]},
+  {id:'fixed',     name:'ثوابت',           icon:'📱', subs:['جوال','نت','يوتيوب']},
+  {id:'stuff',     name:'مقتنيات',         icon:'📦', subs:[]},
+  {id:'social',    name:'اجتماعي',         icon:'🤝', subs:['أب','أم','أخواني','M'], hideSubInLog:true},
+  {id:'other',     name:'أخرى',            icon:'❓', subs:[]},
+];
+const CAT_MAP = Object.fromEntries(CATEGORIES.map(c=>[c.id,c]));
+
+const WEEKDAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+/* ============ أدوات تاريخ (ميلادي دائمًا) ============ */
+function fmtDate(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function parseDate(s){
+  const [y,m,d]=s.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
+function todayStr(){ return fmtDate(new Date()); }
+function isWeekend(dateStr){
+  const wd = parseDate(dateStr).getDay();
+  return wd===5 || wd===6; // الجمعة=5 السبت=6
+}
+function weekdayName(dateStr){ return WEEKDAYS[parseDate(dateStr).getDay()]; }
+function humanDate(dateStr){
+  const d = parseDate(dateStr);
+  return `${d.getDate()} ${MONTHS_AR[d.getMonth()]}`;
+}
+function humanDateFull(dateStr){
+  const d = parseDate(dateStr);
+  return `${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`;
+}
+function addDays(dateStr, n){
+  const d = parseDate(dateStr);
+  d.setDate(d.getDate()+n);
+  return fmtDate(d);
+}
+function dateRange(startStr, endStr){
+  const out=[]; let cur=startStr;
+  while(cur<=endStr){ out.push(cur); cur=addDays(cur,1); }
+  return out;
+}
+
+/* ============ تخزين البيانات ============ */
+function loadDB(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(raw){
+    try{ return JSON.parse(raw); }catch(e){ console.error('DB parse error', e); }
+  }
+  return { monthStart: START_DATE, days:{}, closedMonths:[] };
+}
+function saveDB(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
+let db = loadDB();
+
+function getDay(dateStr, create){
+  if(!db.days[dateStr]){
+    if(!create) return null;
+    db.days[dateStr] = { expenses:[], closed:false };
+  }
+  return db.days[dateStr];
+}
+function dayTotal(dayObj){
+  if(!dayObj) return 0;
+  return dayObj.expenses.reduce((s,e)=>s+Number(e.amount),0);
+}
+function dayColor(total){
+  if(total<=80) return 'var(--green)';
+  if(total<=120) return 'var(--orange)';
+  if(total<=150) return 'var(--orange-dark)';
+  return 'var(--red)';
+}
+
+/* ============ حالة الواجهة ============ */
+let selectedCat = null;
+let selectedSub = null;
+let selectedChartDay = null;
+let openMonthKeys = new Set(); // لأشهر السجل المقفلة المفتوحة للعرض
+let openDayKeys = new Set();   // لأيام مفتوحة داخل السجل
+
+/* ============ عداد الراتب ============ */
+function renderSalaryCountdown(){
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  let target = new Date(today.getFullYear(), today.getMonth(), SALARY_DAY);
+  if(target <= today){ target = new Date(today.getFullYear(), today.getMonth()+1, SALARY_DAY); }
+  const diffDays = Math.round((target - today)/86400000);
+  document.getElementById('salaryCountdown').textContent = diffDays;
+  document.getElementById('salaryDate').textContent = humanDateFull(todayStr());
+}
+
+/* ============ المقاييس العلوية ============ */
+function renderMetrics(){
+  const t = todayStr();
+  const today = getDay(t,false);
+  const spent = today && !today.closed ? dayTotal(today) : 0;
+  document.getElementById('mSpent').textContent = spent.toFixed(spent%1===0?0:2);
+  const spentEl = document.querySelector('.metric.spent .val');
+  spentEl.style.color = spent>150 ? 'var(--red)' : (spent>120? 'var(--orange-dark)': (spent>80?'var(--orange)':'var(--green)'));
+
+  // التوفير: تراكمي لأيام هذا الشهر المقفلة فقط
+  let saved = 0;
+  const monthDates = dateRange(db.monthStart, t);
+  monthDates.forEach(ds=>{
+    const d = db.days[ds];
+    if(d && d.closed){ saved += (DAILY_LIMIT - dayTotal(d)); }
+  });
+  document.getElementById('mSaved').textContent = saved.toFixed(saved%1===0?0:2);
+}
+
+/* ============ نموذج إضافة مصروف ============ */
+function renderCats(){
+  const grid = document.getElementById('catsGrid');
+  grid.innerHTML = CATEGORIES.map(c=>`
+    <div class="cat-btn ${selectedCat===c.id?'active':''}" data-cat="${c.id}">
+      <div class="ic">${c.icon}</div>
+      <div class="nm">${c.name}</div>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.cat-btn').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedCat = el.dataset.cat;
+      selectedSub = null;
+      renderCats();
+      renderSubs();
+      updateAddBtnState();
+    });
+  });
+}
+function renderSubs(){
+  const row = document.getElementById('subsRow');
+  const cat = CAT_MAP[selectedCat];
+  if(!cat || cat.subs.length===0){ row.style.display='none'; row.innerHTML=''; return; }
+  row.style.display='flex';
+  row.innerHTML = cat.subs.map(s=>`<div class="sub-chip ${selectedSub===s?'active':''}" data-sub="${s}">${s}</div>`).join('');
+  row.querySelectorAll('.sub-chip').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedSub = el.dataset.sub;
+      renderSubs();
+    });
+  });
+}
+function updateAddBtnState(){
+  const btn = document.getElementById('addBtn');
+  const cat = CAT_MAP[selectedCat];
+  const needsSub = cat && cat.subs.length>0;
+  const amountVal = document.getElementById('amountInput').value;
+  const amountOk = amountVal !== '' && Number(amountVal)>=0;
+  btn.disabled = !(selectedCat && (!needsSub || selectedSub) && amountOk);
+}
+document.getElementById('amountInput').addEventListener('input', updateAddBtnState);
+
+document.getElementById('addBtn').addEventListener('click', ()=>{
+  const t = todayStr();
+  const day = getDay(t, true);
+  if(day.closed) day.closed = false; // إعادة فتح تلقائية عند إضافة مصروف جديد
+  const amount = Number(document.getElementById('amountInput').value || 0);
+  const note = document.getElementById('noteInput').value.trim();
+  day.expenses.push({
+    id: Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    category: selectedCat,
+    sub: selectedSub || null,
+    amount: amount,
+    note: note,
+    time: new Date().toISOString()
+  });
+  saveDB();
+  document.getElementById('amountInput').value='';
+  document.getElementById('noteInput').value='';
+  selectedCat = null; selectedSub = null;
+  renderCats(); renderSubs(); updateAddBtnState();
+  renderAll();
+});
+
+/* ============ إقفال اليوم / الشهر ============ */
+document.getElementById('closeDayBtn').addEventListener('click', ()=>{
+  const t = todayStr();
+  const day = getDay(t, true); // الإقفال يشتغل حتى لو صفر مصاريف
+  day.closed = true;
+  saveDB();
+  renderAll();
+});
+document.getElementById('closeMonthBtn').addEventListener('click', ()=>{
+  if(!confirm('هل تريد إقفال الشهر بالكامل؟ سيبدأ شهر جديد من الغد.')) return;
+  const t = todayStr();
+  const today = getDay(t, true);
+  today.closed = true; // إقفال اليوم الحالي ضمن إقفال الشهر
+
+  const monthDates = dateRange(db.monthStart, t);
+  let totalSpent=0, totalSaved=0;
+  const daysCopy = {};
+  monthDates.forEach(ds=>{
+    const d = db.days[ds] || {expenses:[], closed:true};
+    daysCopy[ds] = d;
+    totalSpent += dayTotal(d);
+    totalSaved += (DAILY_LIMIT - dayTotal(d));
+  });
+  db.closedMonths.unshift({
+    start: db.monthStart,
+    end: t,
+    days: daysCopy,
+    totalSpent, totalSaved
+  });
+  db.days = {};
+  db.monthStart = addDays(t,1);
+  saveDB();
+  renderAll();
+});
+
+/* ============ الرسم البياني (٧ أيام + تمرير) ============ */
+function renderChart(){
+  const t = todayStr();
+  const allDates = dateRange(db.monthStart, t);
+  const scaleMax = Math.max(DAILY_LIMIT, ...allDates.map(ds=>dayTotal(db.days[ds])), 1);
+
+  const inner = document.getElementById('chartInner');
+  const limitPct = DAILY_LIMIT/scaleMax*100;
+
+  const cols = allDates.map(ds=>{
+    const d = db.days[ds];
+    const total = dayTotal(d);
+    const closed = d ? d.closed : false;
+    const isToday = ds===t;
+    const spentColor = closed ? dayColor(total) : (isToday? 'var(--muted2)':'var(--line)');
+    const savingContribution = closed ? Math.max(0, DAILY_LIMIT-total) : 0;
+    const spentH = Math.max(4, total/scaleMax*130);
+    const savedH = Math.max(4, savingContribution/scaleMax*130);
+    const weekendCls = isWeekend(ds)?'weekend':'';
+    const todayCls = isToday?'today':'';
+    const selCls = selectedChartDay===ds?'selected':'';
+    return `
+      <div class="day-col ${weekendCls} ${todayCls} ${selCls}" data-date="${ds}">
+        <div class="bars">
+          <div class="bar spent" style="height:${spentH}px;background:${spentColor}">${total>0?`<span>${Math.round(total)}</span>`:''}</div>
+          <div class="bar saved" style="height:${savedH}px;">${savingContribution>0?`<span>${Math.round(savingContribution)}</span>`:''}</div>
+        </div>
+        <div class="dlabel"><b>${parseDate(ds).getDate()}</b>${weekdayName(ds).slice(0,3)}</div>
+      </div>
+    `;
+  }).join('');
+
+  inner.innerHTML = `<div class="limit-line" style="bottom:${limitPct}%"><span>${DAILY_LIMIT}</span></div>` + cols;
+
+  inner.querySelectorAll('.day-col').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedChartDay = (selectedChartDay===el.dataset.date) ? null : el.dataset.date;
+      renderChart();
+      renderDayDetail();
+    });
+  });
+
+  // تمرير تلقائي لآخر الأيام عند أول تحميل
+  const scroller = document.getElementById('chartScroll');
+  if(!scroller.dataset.scrolled){
+    scroller.scrollLeft = scroller.scrollWidth;
+    scroller.dataset.scrolled = '1';
+  }
+}
+
+function renderDayDetail(){
+  const box = document.getElementById('dayDetail');
+  if(!selectedChartDay){ box.innerHTML=''; return; }
+  box.innerHTML = expensesHtml(selectedChartDay, db.days[selectedChartDay]);
+}
+
+function expensesHtml(dateStr, dayObj){
+  const total = dayTotal(dayObj);
+  const head = `<div class="dd-head"><span>${humanDateFull(dateStr)} · ${weekdayName(dateStr)}</span><span>الإجمالي: ${total.toFixed(total%1===0?0:2)} ريال</span></div>`;
+  if(!dayObj || dayObj.expenses.length===0){
+    return `<div class="daydetail">${head}<div class="empty-note">لا توجد مصاريف مسجلة في هذا اليوم</div></div>`;
+  }
+  const rows = dayObj.expenses.map(e=>{
+    const cat = CAT_MAP[e.category] || {name:e.category, icon:'❓'};
+    const showSub = e.sub && !cat.hideSubInLog;
+    const subTxt = showSub ? ' · '+e.sub : '';
+    const noteTxt = e.note ? ` — ${escapeHtml(e.note)}` : '';
+    return `<div class="exp-row">
+      <div class="ei"><span class="ic">${cat.icon}</span><div><div>${cat.name}${subTxt}</div><div class="meta">${noteTxt.slice(3)||''}</div></div></div>
+      <div class="amt">${Number(e.amount).toFixed(e.amount%1===0?0:2)}</div>
+    </div>`;
+  }).join('');
+  return `<div class="daydetail">${head}${rows}</div>`;
+}
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ============ السجل ============ */
+function renderLog(){
+  const container = document.getElementById('logContainer');
+  const t = todayStr();
+  const currentDates = dateRange(db.monthStart, t).slice().reverse();
+
+  let html = `<div class="month-block">
+    <div class="month-head open" style="cursor:default;">
+      <div class="mh-l">📆 ${humanDate(db.monthStart)} — الشهر الحالي</div>
+      <div class="mh-r"><span class="badge">مفتوح</span></div>
+    </div>
+    <div class="month-days open">
+      ${currentDates.map(ds=>dayRowHtml(ds, db.days[ds])).join('') || '<div class="empty-note">لا توجد أيام بعد</div>'}
+    </div>
+  </div>`;
+
+  db.closedMonths.forEach((m, idx)=>{
+    const key = 'm'+idx;
+    const isOpen = openMonthKeys.has(key);
+    const dates = Object.keys(m.days).sort().reverse();
+    html += `<div class="month-block">
+      <div class="month-head ${isOpen?'open':''}" data-mkey="${key}">
+        <div class="mh-l">${humanDate(m.start)} – ${humanDate(m.end)}</div>
+        <div class="mh-r">
+          <span>${m.totalSpent.toFixed(0)} ريال</span>
+          <span class="chev">◀</span>
+        </div>
+      </div>
+      <div class="month-days ${isOpen?'open':''}" id="days_${key}">
+        ${isOpen ? dates.map(ds=>dayRowHtml(ds, m.days[ds])).join('') : ''}
+      </div>
+    </div>`;
+  });
+
+  container.innerHTML = html;
+
+  container.querySelectorAll('.month-head[data-mkey]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.mkey;
+      if(openMonthKeys.has(key)) openMonthKeys.delete(key); else openMonthKeys.add(key);
+      renderLog();
+    });
+  });
+  attachDayRowEvents(container);
+}
+
+function dayRowHtml(dateStr, dayObj){
+  const total = dayTotal(dayObj);
+  const closed = dayObj ? dayObj.closed : false;
+  const color = closed ? dayColor(total) : 'var(--muted2)';
+  const weekendCls = isWeekend(dateStr) ? 'weekend' : '';
+  const key = 'd_'+dateStr;
+  const isOpen = openDayKeys.has(key);
+  const statusTxt = closed ? '' : '<span class="status"> · مفتوح</span>';
+  const row = `
+    <div class="day-row ${weekendCls}" data-daykey="${key}" data-date="${dateStr}">
+      <div class="dr-l">
+        <span class="dot" style="background:${color}"></span>
+        <span class="dr-date"><span class="wd">${weekdayName(dateStr)}</span>${humanDate(dateStr)}</span>
+      </div>
+      <div class="dr-r">${total.toFixed(total%1===0?0:2)}${statusTxt}</div>
+    </div>
+    <div class="day-expenses ${isOpen?'open':''}" id="${key}">
+      ${isOpen ? expensesHtml(dateStr, dayObj) : ''}
+    </div>
+  `;
+  return row;
+}
+function attachDayRowEvents(container){
+  container.querySelectorAll('.day-row').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.daykey;
+      if(openDayKeys.has(key)) openDayKeys.delete(key); else openDayKeys.add(key);
+      renderLog();
+    });
+  });
+}
+
+/* ============ البحث ============ */
+function allExpensesFlat(){
+  const list = [];
+  Object.keys(db.days).forEach(ds=>{
+    db.days[ds].expenses.forEach(e=> list.push({...e, date:ds}));
+  });
+  db.closedMonths.forEach(m=>{
+    Object.keys(m.days).forEach(ds=>{
+      m.days[ds].expenses.forEach(e=> list.push({...e, date:ds}));
+    });
+  });
+  return list.sort((a,b)=> b.date.localeCompare(a.date) || (b.time||'').localeCompare(a.time||''));
+}
+document.getElementById('searchInput').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  const box = document.getElementById('searchResults');
+  if(!q){ box.innerHTML=''; return; }
+  const all = allExpensesFlat();
+  const results = all.filter(x=>{
+    const cat = CAT_MAP[x.category];
+    const catName = cat ? cat.name : x.category;
+    const hay = [x.note||'', catName, x.sub||'', x.date, humanDate(x.date)].join(' ').toLowerCase();
+    return hay.includes(q);
+  }).slice(0,50);
+  if(results.length===0){
+    box.innerHTML = '<div class="empty-note">لا توجد نتائج مطابقة</div>';
+    return;
+  }
+  box.innerHTML = results.map(x=>{
+    const cat = CAT_MAP[x.category] || {name:x.category, icon:'❓'};
+    const showSub = x.sub && !cat.hideSubInLog;
+    return `<div class="exp-row">
+      <div class="ei"><span class="ic">${cat.icon}</span>
+        <div><div>${cat.name}${showSub?' · '+x.sub:''}</div>
+        <div class="meta">${humanDate(x.date)}${x.note?' — '+escapeHtml(x.note):''}</div></div>
+      </div>
+      <div class="amt">${Number(x.amount).toFixed(x.amount%1===0?0:2)}</div>
+    </div>`;
+  }).join('');
+});
+
+/* ============ تحديث شامل ============ */
+function renderAll(){
+  renderSalaryCountdown();
+  renderMetrics();
+  renderChart();
+  renderDayDetail();
+  renderLog();
+}
+renderCats();
+renderSubs();
+renderAll();
+setInterval(renderSalaryCountdown, 60*1000);
+</script>
+</body>
+</html>
