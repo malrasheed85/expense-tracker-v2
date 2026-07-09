@@ -319,15 +319,55 @@ function dateRange(startStr, endStr){
 }
 
 /* ============ تخزين البيانات ============ */
-function loadDB(){
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if(raw){
-    try{ return JSON.parse(raw); }catch(e){ console.error('DB parse error', e); }
+/* ============ تخزين ومزامنة البيانات سحابياً ============ */
+let db = { monthStart: START_DATE, days:{}, closedMonths:[] };
+
+// ⚠️ محمد: ضع رابط الفايربيس الخاص بك هنا واحرص على وجود /data.json في آخره
+const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
+
+// دالة جلب البيانات السحابية عند فتح الصفحة أو التحديث
+async function syncFromCloud() {
+  try {
+    const response = await fetch(FIREBASE_URL);
+    const cloudData = await response.json();
+    if (cloudData) {
+      db = cloudData;
+      if(!db.closedMonths) db.closedMonths = [];
+      if(!db.days) db.days = {};
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      document.getElementById('syncStatus').textContent = '🔄 البيانات متزامنة مع السحاب بالثانية';
+      document.getElementById('syncStatus').style.color = 'var(--green)';
+    } else {
+      // إذا كانت قاعدة البيانات السحابية فارغة، نرفع البيانات المحلية الحالية
+      await syncToCloud();
+    }
+    renderAll();
+  } catch (e) {
+    console.error('خطأ في جلب البيانات من السحاب، تم التحويل للذاكرة المحلية:', e);
+    document.getElementById('syncStatus').textContent = '⚠️ يعمل دون اتصال - لم يتم التزامن';
+    document.getElementById('syncStatus').style.color = 'var(--orange)';
+    // نسخة احتياطية من الجهاز المحلي لو السيرفر فصل
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) db = JSON.parse(raw);
+    renderAll();
   }
-  return { monthStart: START_DATE, days:{}, closedMonths:[] };
 }
-function saveDB(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
-let db = loadDB();
+
+// دالة رفع البيانات فورياً للسيرفر عند أي تعديل
+async function syncToCloud() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  try {
+    await fetch(FIREBASE_URL, {
+      method: 'PUT', // PUT يستبدل الكائن بالكامل لضمان التناسق الهيكلي
+      body: JSON.stringify(db),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    document.getElementById('syncStatus').textContent = '🔄 البيانات متزامنة مع السحاب بالثانية';
+    document.getElementById('syncStatus').style.color = 'var(--green)';
+  } catch (e) {
+    console.error('خطأ في رفع البيانات للسحاب:', e);
+  }
+}
 
 function getDay(dateStr, create){
   if(!db.days[dateStr]){
@@ -345,9 +385,7 @@ function dayColor(total){
   if(total<=120) return 'var(--orange)';
   if(total<=150) return 'var(--orange-dark)';
   return 'var(--red)';
-}
-
-/* ============ حالة الواجهة ============ */
+}/* ============ حالة الواجهة ============ */
 let selectedCat = null;
 let selectedSub = null;
 let selectedChartDay = null;
