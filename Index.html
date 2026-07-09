@@ -728,8 +728,10 @@ function renderAll(){
 }
 renderCats();
 renderSubs();
-renderAll();
+
+// تشغيل المزامنة وجلب البيانات السحابية فور فتح الصفحة
+syncFromCloud(); 
+
 setInterval(renderSalaryCountdown, 60*1000);
-</script>
-</body>
-</html>
+// تحديث البيانات تلقائياً كل 30 ثانية للتأكد من المزامنة المستمرة بين الأجهزة
+setInterval(syncFromCloud, 30*1000);
