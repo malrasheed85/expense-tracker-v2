@@ -199,6 +199,8 @@ input:focus{outline:none;border-color:var(--accent);}
       <div class="sp-date" id="salaryDate">--</div>
     </div>
   </header>
+  
+  <div id="syncStatus" style="font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: bold; color: var(--muted);">جاري الاتصال بالسيرفر السحابي...</div>
 
   <div class="metrics">
     <div class="metric limit">
@@ -255,19 +257,20 @@ input:focus{outline:none;border-color:var(--accent);}
     <div id="logContainer"></div>
   </div>
 
-  <div class="hint">جميع بياناتك محفوظة على هذا الجهاز فقط (localStorage) — لا يوجد اتصال بخادم.</div>
+  <div class="hint">بياناتك متزامنة ومحفوظة سحابياً عبر Firebase Realtime Database للوصول من كافة أجهزتك بأمان.</div>
 </div>
 
 <script>
 /* ============ إعدادات ثابتة ============ */
 const DAILY_LIMIT = 150;
 const START_DATE = '2026-07-27';
-const SALARY_DAY = 27; // افتراض: الراتب يوم 27 من كل شهر ميلادي — عدّل SALARY_DAY لو مختلف
+const SALARY_DAY = 27; 
 const STORAGE_KEY = 'msarraf_data_v1';
+const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
 
 const CATEGORIES = [
-  {id:'sadaqah',   name:'صدقة',            icon:'🤲', subs:[]},
-  {id:'food',      name:'طعام',            icon:'🥗', subs:['فطور','غداء','عشاء']},
+  {id:'sadaqah',   name:'صدقة',           icon:'🤲', subs:[]},
+  {id:'food',      name:'طعام',           icon:'🥗', subs:['فطور','غداء','عشاء']},
   {id:'coffee',    name:'قهوة وشاي',        icon:'☕', subs:['قهوة','شاي']},
   {id:'car',       name:'سيارة',           icon:'🚗', subs:['بنزين','غسيل','زيت','صيانة']},
   {id:'laundry',   name:'مغسلة',           icon:'👕', subs:[]},
@@ -276,7 +279,7 @@ const CATEGORIES = [
   {id:'market',    name:'سوبر ماركت',       icon:'🛒', subs:[]},
   {id:'fixed',     name:'ثوابت',           icon:'📱', subs:['جوال','نت','يوتيوب']},
   {id:'stuff',     name:'مقتنيات',         icon:'📦', subs:[]},
-  {id:'social',    name:'اجتماعي',         icon:'🤝', subs:['أب','أم','أخواني','M'], hideSubInLog:true},
+  {id:'social',    name:'اجتماعي',          icon:'🤝', subs:['أب','أم','أخواني','M'], hideSubInLog:true},
   {id:'other',     name:'أخرى',            icon:'❓', subs:[]},
 ];
 const CAT_MAP = Object.fromEntries(CATEGORIES.map(c=>[c.id,c]));
@@ -296,7 +299,7 @@ function parseDate(s){
 function todayStr(){ return fmtDate(new Date()); }
 function isWeekend(dateStr){
   const wd = parseDate(dateStr).getDay();
-  return wd===5 || wd===6; // الجمعة=5 السبت=6
+  return wd===5 || wd===6; 
 }
 function weekdayName(dateStr){ return WEEKDAYS[parseDate(dateStr).getDay()]; }
 function humanDate(dateStr){
@@ -318,16 +321,55 @@ function dateRange(startStr, endStr){
   return out;
 }
 
-/* ============ تخزين البيانات ============ */
-function loadDB(){
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if(raw){
-    try{ return JSON.parse(raw); }catch(e){ console.error('DB parse error', e); }
+/* ============ إدارة قاعدة البيانات والتزامن ============ */
+let db = { monthStart: START_DATE, days:{}, closedMonths:[] };
+
+// دالة جلب البيانات السحابية
+async function syncFromCloud() {
+  try {
+    const response = await fetch(FIREBASE_URL);
+    const cloudData = await response.json();
+    if (cloudData) {
+      db = cloudData;
+      if(!db.closedMonths) db.closedMonths = [];
+      if(!db.days) db.days = {};
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      document.getElementById('syncStatus').textContent = '🔄 البيانات متزامنة مع السحاب بالثانية';
+      document.getElementById('syncStatus').style.color = 'var(--green)';
+    } else {
+      await syncToCloud();
+    }
+    renderAll();
+  } catch (e) {
+    console.error('خطأ في جلب البيانات من السحاب، تم التحويل للذاكرة المحلية:', e);
+    document.getElementById('syncStatus').textContent = '⚠️ يعمل دون اتصال - لم يتم التزامن';
+    document.getElementById('syncStatus').style.color = 'var(--orange)';
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) db = JSON.parse(raw);
+    renderAll();
   }
-  return { monthStart: START_DATE, days:{}, closedMonths:[] };
 }
-function saveDB(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
-let db = loadDB();
+
+// دالة رفع البيانات فورياً عند أي تعديل
+async function syncToCloud() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  try {
+    await fetch(FIREBASE_URL, {
+      method: 'PUT', 
+      body: JSON.stringify(db),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    document.getElementById('syncStatus').textContent = '🔄 البيانات متزامنة مع السحاب بالثانية';
+    document.getElementById('syncStatus').style.color = 'var(--green)';
+  } catch (e) {
+    console.error('خطأ في رفع البيانات للسحاب:', e);
+  }
+}
+
+// دالة الحفظ الوسيطة لاستدعاء الرفع التلقائي لفايربيس
+function saveDB() {
+  syncToCloud();
+}
 
 function getDay(dateStr, create){
   if(!db.days[dateStr]){
@@ -351,8 +393,8 @@ function dayColor(total){
 let selectedCat = null;
 let selectedSub = null;
 let selectedChartDay = null;
-let openMonthKeys = new Set(); // لأشهر السجل المقفلة المفتوحة للعرض
-let openDayKeys = new Set();   // لأيام مفتوحة داخل السجل
+let openMonthKeys = new Set(); 
+let openDayKeys = new Set();   
 
 /* ============ عداد الراتب ============ */
 function renderSalaryCountdown(){
@@ -374,7 +416,6 @@ function renderMetrics(){
   const spentEl = document.querySelector('.metric.spent .val');
   spentEl.style.color = spent>150 ? 'var(--red)' : (spent>120? 'var(--orange-dark)': (spent>80?'var(--orange)':'var(--green)'));
 
-  // التوفير: تراكمي لأيام هذا الشهر المقفلة فقط
   let saved = 0;
   const monthDates = dateRange(db.monthStart, t);
   monthDates.forEach(ds=>{
@@ -429,7 +470,7 @@ document.getElementById('amountInput').addEventListener('input', updateAddBtnSta
 document.getElementById('addBtn').addEventListener('click', ()=>{
   const t = todayStr();
   const day = getDay(t, true);
-  if(day.closed) day.closed = false; // إعادة فتح تلقائية عند إضافة مصروف جديد
+  if(day.closed) day.closed = false; 
   const amount = Number(document.getElementById('amountInput').value || 0);
   const note = document.getElementById('noteInput').value.trim();
   day.expenses.push({
@@ -451,7 +492,7 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
 /* ============ إقفال اليوم / الشهر ============ */
 document.getElementById('closeDayBtn').addEventListener('click', ()=>{
   const t = todayStr();
-  const day = getDay(t, true); // الإقفال يشتغل حتى لو صفر مصاريف
+  const day = getDay(t, true); 
   day.closed = true;
   saveDB();
   renderAll();
@@ -460,7 +501,7 @@ document.getElementById('closeMonthBtn').addEventListener('click', ()=>{
   if(!confirm('هل تريد إقفال الشهر بالكامل؟ سيبدأ شهر جديد من الغد.')) return;
   const t = todayStr();
   const today = getDay(t, true);
-  today.closed = true; // إقفال اليوم الحالي ضمن إقفال الشهر
+  today.closed = true; 
 
   const monthDates = dateRange(db.monthStart, t);
   let totalSpent=0, totalSaved=0;
@@ -483,7 +524,7 @@ document.getElementById('closeMonthBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
-/* ============ الرسم البياني (٧ أيام + تمرير) ============ */
+/* ============ الرسم البياني ============ */
 function renderChart(){
   const t = todayStr();
   const allDates = dateRange(db.monthStart, t);
@@ -525,7 +566,6 @@ function renderChart(){
     });
   });
 
-  // تمرير تلقائي لآخر الأيام عند أول تحميل
   const scroller = document.getElementById('chartScroll');
   if(!scroller.dataset.scrolled){
     scroller.scrollLeft = scroller.scrollWidth;
@@ -680,7 +720,7 @@ document.getElementById('searchInput').addEventListener('input', (e)=>{
   }).join('');
 });
 
-/* ============ تحديث شامل ============ */
+/* ============ بدء التشغيل والتحديث التلقائي ============ */
 function renderAll(){
   renderSalaryCountdown();
   renderMetrics();
@@ -688,10 +728,19 @@ function renderAll(){
   renderDayDetail();
   renderLog();
 }
+
+// البدء المباشر
 renderCats();
 renderSubs();
-renderAll();
+
+// تشغيل المزامنة وجلب البيانات السحابية فور فتح الصفحة
+syncFromCloud(); 
+
+// عداد الراتب يتحدث كل دقيقة
 setInterval(renderSalaryCountdown, 60*1000);
+
+// تحديث البيانات تلقائياً من السيرفر كل 30 ثانية للمزامنة اللحظية بين الجوال والكمبيوتر
+setInterval(syncFromCloud, 30*1000); 
 </script>
 </body>
 </html>
