@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -337,6 +336,30 @@ const SALARY_DAY = 27; // افتراض: الراتب يوم 27 من كل شهر 
 const STORAGE_KEY = 'msarraf_data_v1';
 const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
 
+/* ============ مزامنة Google Sheets (Action-Based) ============ */
+const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzyzc4VFsBXERVX-LdQ_l0PAnN6rR9jyW9sICWowDehvUpo57eYzuK9c6Rkh-bROHByvw/exec';
+
+// يرسل حدث واحد فقط (إضافة/تعديل/حذف/إقفال) لسكربت الشيت، بدون انتظار الرد
+function sendToSheet(action, payload){
+  try{
+    fetch(SHEET_WEB_APP_URL, {
+      method: 'POST',
+      // نستخدم text/plain لتفادي طلب OPTIONS المسبق (preflight) اللي ما يدعمه Apps Script
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({action:action}, payload))
+    }).catch(function(e){ console.error('فشل إرسال الحدث لجوجل شيت:', e); });
+  } catch(e){
+    console.error('فشل إرسال الحدث لجوجل شيت:', e);
+  }
+}
+
+// لا نرسل تفاصيل الفئة الفرعية لفئة "اجتماعي" حفاظاً على الخصوصية (نفس منطق hideSubInLog)
+function subForSheet(catId, sub){
+  const cat = CAT_MAP[catId];
+  if(cat && cat.hideSubInLog) return '';
+  return sub || '';
+}
+
 const CATEGORIES = [
   {id:'sadaqah',   name:'صدقة',            icon:'🤲', subs:[]},
   {id:'coffee',    name:'قهوة وشاي',        icon:'☕', subs:['قهوة','شاي']},
@@ -665,15 +688,24 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
   const amount = Number(normalizeDigits(document.getElementById('amountInput').value) || 0);
   const note = document.getElementById('noteInput').value.trim();
   const combinedSub = selectedSub2 ? `${selectedSub} · ${selectedSub2}` : (selectedSub || null);
-  day.expenses.push({
+  const newExpense = {
     id: Date.now()+'_'+Math.random().toString(36).slice(2,7),
     category: selectedCat,
     sub: combinedSub,
     amount: amount,
     note: note,
     time: new Date().toISOString()
-  });
+  };
+  day.expenses.push(newExpense);
   saveDB();
+  sendToSheet('add', {
+    id: newExpense.id,
+    date: t,
+    category: newExpense.category,
+    sub: subForSheet(newExpense.category, newExpense.sub),
+    amount: newExpense.amount,
+    note: newExpense.note
+  });
   document.getElementById('amountInput').value='';
   document.getElementById('noteInput').value='';
   selectedCat = null; selectedSub = null; selectedSub2 = null;
@@ -686,8 +718,10 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
 document.getElementById('closeDayBtn').addEventListener('click', ()=>{
   const t = todayStr();
   const day = getDay(t, true); // الإقفال يشتغل حتى لو صفر مصاريف
+  const total = dayTotal(day);
   day.closed = true;
   saveDB();
+  sendToSheet('closeDay', { date: t, total: total });
   renderAll();
 });
 const closeMonthBtn = document.getElementById('closeMonthBtn');
@@ -707,6 +741,7 @@ closeMonthBtn.addEventListener('click', ()=>{
   closeMonthBtn.textContent = closeMonthBtn.dataset.origText;
 
   const t = todayStr();
+  const monthStartOrig = db.monthStart; // نحفظه قبل ما يتغيّر
   const today = getDay(t, true);
   today.closed = true; // إقفال اليوم الحالي ضمن إقفال الشهر
 
@@ -728,6 +763,7 @@ closeMonthBtn.addEventListener('click', ()=>{
   db.days = {};
   db.monthStart = addDays(t,1);
   saveDB();
+  sendToSheet('closeMonth', { start: monthStartOrig, end: t, totalSpent: totalSpent, totalSaved: totalSaved });
   setSelectedEntryDate(todayStr());
   renderAll();
 });
@@ -912,6 +948,14 @@ function saveEditedExpense(){
   }
 
   saveDB();
+  sendToSheet('edit', {
+    id: ref.expense.id,
+    date: editingExpense.date,
+    category: ref.expense.category,
+    sub: subForSheet(ref.expense.category, ref.expense.sub),
+    amount: ref.expense.amount,
+    note: ref.expense.note
+  });
   editingExpense = null;
   refreshAfterEditUiChange();
 }
@@ -1077,6 +1121,7 @@ function deleteExpense(dateStr, id){
 
   if(removed){
     saveDB();
+    sendToSheet('delete', { id: id });
     renderAll();
     const searchInput = document.getElementById('searchInput');
     if(searchInput.value.trim()){
