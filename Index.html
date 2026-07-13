@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -48,7 +49,7 @@ header.top h1{font-size:19px;font-weight:800;margin:0;}
 }
 .salary-pill .sp-count{font-size:12px;color:var(--text);}
 .salary-pill .sp-count b{color:var(--accent);}
-.salary-pill .sp-date{font-size:10px;color:var(--muted2);}
+.salary-pill .sp-date{font-size:10px;color:var(--muted2);align-self:center;text-align:center;width:100%;}
 
 /* metrics */
 .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
@@ -259,7 +260,7 @@ select.edit-input{appearance:none;}
   <div class="metrics">
     <div class="metric limit">
       <div class="lbl">الحد اليومي</div>
-      <div class="val mono">150</div>
+      <div class="val mono" id="mLimit">200</div>
     </div>
     <div class="metric spent">
       <div class="lbl">المصروف</div>
@@ -288,9 +289,10 @@ select.edit-input{appearance:none;}
     </div>
     <div class="cats" id="catsGrid"></div>
     <div class="subs" id="subsRow" style="display:none;"></div>
+    <div class="subs" id="subs2Row" style="display:none;"></div>
     <div class="form-row">
       <div class="amount-wrap">
-        <input type="number" id="amountInput" placeholder="0" min="0" step="0.5" inputmode="decimal">
+        <input type="text" id="amountInput" placeholder="0" inputmode="decimal" autocomplete="off">
         <span>ريال</span>
       </div>
     </div>
@@ -329,7 +331,7 @@ select.edit-input{appearance:none;}
 
 <script>
 /* ============ إعدادات ثابتة ============ */
-const DAILY_LIMIT = 150;
+const DAILY_LIMIT = 200;
 const START_DATE = '2026-07-27';
 const SALARY_DAY = 27; // افتراض: الراتب يوم 27 من كل شهر ميلادي — عدّل SALARY_DAY لو مختلف
 const STORAGE_KEY = 'msarraf_data_v1';
@@ -338,14 +340,14 @@ const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.
 const CATEGORIES = [
   {id:'sadaqah',   name:'صدقة',            icon:'🤲', subs:[]},
   {id:'coffee',    name:'قهوة وشاي',        icon:'☕', subs:['قهوة','شاي']},
-  {id:'food',      name:'طعام',            icon:'🥗', subs:['فطور','غداء','عشاء']},
+  {id:'food',      name:'طعام',            icon:'🥗', subs:['فطور','غداء','عشاء'], subs2:['بنفسي','توصيل']},
   {id:'fixed',     name:'ثوابت',           icon:'📱', subs:['جوال','انترنت','يوتيوب','اخرى']},
   {id:'car',       name:'سيارة',           icon:'🚗', subs:['بنزين','غسيل','زيت','صيانة','مخالفة']},
-  {id:'laundry',   name:'مغسلة',           icon:'👕', subs:[]},
-  {id:'market',    name:'سوبر ماركت',       icon:'🛒', subs:['بنفسي','تطبيقات التوصيل']},
+  {id:'market',    name:'سوبر ماركت',       icon:'🛒', subs:['بنفسي','توصيل']},
   {id:'pharmacy',  name:'صيدلية',          icon:'💊', subs:[]},
-  {id:'cleaning',  name:'تنظيف الشقة',      icon:'🧹', subs:[]},
-  {id:'social',    name:'اجتماعي',         icon:'🤝', subs:['أب','أم','أخواني','M'], hideSubInLog:true, excludeFromBudget:true},
+  {id:'care',      name:'عناية شخصية',      icon:'💈', subs:['حلاقة','سبا','عطور','مغسلة','اخرى']},
+  {id:'shopping',  name:'تسوق',            icon:'👕', subs:['ملابس','جزمات','اخرى']},
+  {id:'social',    name:'اجتماعي',         icon:'🤝', subs:['أبوي','أمي','أخواني','M'], hideSubInLog:true, excludeFromBudget:true},
   {id:'other',     name:'أخرى',            icon:'❓', subs:[]},
 ];
 const CAT_MAP = Object.fromEntries(CATEGORIES.map(c=>[c.id,c]));
@@ -355,6 +357,14 @@ const WEEKDAYS_EN_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
 /* ============ أدوات تاريخ (ميلادي دائمًا) ============ */
+/* ============ تحويل الأرقام العربية/الفارسية لأرقام إنجليزية ============ */
+function normalizeDigits(str){
+  if(str==null) return str;
+  return String(str)
+    .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660)) // أرقام عربية هندية
+    .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0)); // أرقام فارسية
+}
+
 function fmtDate(d){
   const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
@@ -460,15 +470,16 @@ function dayTotal(dayObj){
   },0);
 }
 function dayColor(total){
-  if(total<=80) return 'var(--green)';
-  if(total<=120) return 'var(--orange)';
-  if(total<=150) return 'var(--orange-dark)';
+  if(total <= DAILY_LIMIT*0.53) return 'var(--green)';
+  if(total <= DAILY_LIMIT*0.8) return 'var(--orange)';
+  if(total <= DAILY_LIMIT) return 'var(--orange-dark)';
   return 'var(--red)';
 }
 
 /* ============ حالة الواجهة ============ */
 let selectedCat = null;
 let selectedSub = null;
+let selectedSub2 = null;
 let selectedChartDay = null;
 let openMonthKeys = new Set(); // لأشهر السجل المقفلة المفتوحة للعرض
 let openDayKeys = new Set();   // لأيام مفتوحة داخل السجل
@@ -486,12 +497,14 @@ function renderSalaryCountdown(){
 
 /* ============ المقاييس العلوية ============ */
 function renderMetrics(){
+  document.getElementById('mLimit').textContent = DAILY_LIMIT;
+
   const t = todayStr();
   const today = getDay(t,false);
   const spent = today && !today.closed ? dayTotal(today) : 0;
   document.getElementById('mSpent').textContent = spent.toFixed(spent%1===0?0:2);
   const spentEl = document.querySelector('.metric.spent .val');
-  spentEl.style.color = spent>150 ? 'var(--red)' : (spent>120? 'var(--orange-dark)': (spent>80?'var(--orange)':'var(--green)'));
+  spentEl.style.color = spent >= DAILY_LIMIT ? 'var(--red)' : 'var(--green)';
 
   // التوفير: تراكمي لأيام هذا الشهر المقفلة فقط
   let saved = 0;
@@ -501,6 +514,8 @@ function renderMetrics(){
     if(d && d.closed){ saved += (DAILY_LIMIT - dayTotal(d)); }
   });
   document.getElementById('mSaved').textContent = saved.toFixed(saved%1===0?0:2);
+  const savedEl = document.querySelector('.metric.saved .val');
+  savedEl.style.color = saved > 1000 ? 'var(--green)' : (saved > 500 ? 'var(--blue)' : 'var(--text)');
 }
 
 /* ============ اختيار تاريخ إضافة المصروف (اليوم / أمس / تاريخ آخر) ============ */
@@ -590,6 +605,7 @@ function renderCats(){
     el.addEventListener('click', ()=>{
       selectedCat = el.dataset.cat;
       selectedSub = null;
+      selectedSub2 = null;
       renderCats();
       renderSubs();
       updateAddBtnState();
@@ -599,13 +615,31 @@ function renderCats(){
 function renderSubs(){
   const row = document.getElementById('subsRow');
   const cat = CAT_MAP[selectedCat];
-  if(!cat || cat.subs.length===0){ row.style.display='none'; row.innerHTML=''; return; }
+  if(!cat || cat.subs.length===0){ row.style.display='none'; row.innerHTML=''; renderSubs2(); return; }
   row.style.display='flex';
   row.innerHTML = cat.subs.map(s=>`<div class="sub-chip ${selectedSub===s?'active':''}" data-sub="${s}">${s}</div>`).join('');
   row.querySelectorAll('.sub-chip').forEach(el=>{
     el.addEventListener('click', ()=>{
       selectedSub = el.dataset.sub;
+      selectedSub2 = null;
       renderSubs();
+      renderSubs2();
+      updateAddBtnState();
+    });
+  });
+  renderSubs2();
+}
+function renderSubs2(){
+  const row2 = document.getElementById('subs2Row');
+  const cat = CAT_MAP[selectedCat];
+  if(!cat || !cat.subs2 || !selectedSub){ row2.style.display='none'; row2.innerHTML=''; return; }
+  row2.style.display='flex';
+  row2.innerHTML = cat.subs2.map(s=>`<div class="sub-chip ${selectedSub2===s?'active':''}" data-sub2="${s}">${s}</div>`).join('');
+  row2.querySelectorAll('.sub-chip').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedSub2 = el.dataset.sub2;
+      renderSubs2();
+      updateAddBtnState();
     });
   });
 }
@@ -613,22 +647,28 @@ function updateAddBtnState(){
   const btn = document.getElementById('addBtn');
   const cat = CAT_MAP[selectedCat];
   const needsSub = cat && cat.subs.length>0;
-  const amountVal = document.getElementById('amountInput').value;
-  const amountOk = amountVal !== '' && Number(amountVal)>=0;
-  btn.disabled = !(selectedCat && (!needsSub || selectedSub) && amountOk);
+  const needsSub2 = cat && cat.subs2 && cat.subs2.length>0;
+  const amountVal = normalizeDigits(document.getElementById('amountInput').value);
+  const amountOk = amountVal !== '' && !isNaN(Number(amountVal)) && Number(amountVal)>=0;
+  btn.disabled = !(selectedCat && (!needsSub || selectedSub) && (!needsSub2 || selectedSub2) && amountOk);
 }
-document.getElementById('amountInput').addEventListener('input', updateAddBtnState);
+document.getElementById('amountInput').addEventListener('input', (e)=>{
+  const normalized = normalizeDigits(e.target.value);
+  if(normalized !== e.target.value) e.target.value = normalized;
+  updateAddBtnState();
+});
 
 document.getElementById('addBtn').addEventListener('click', ()=>{
   const t = selectedEntryDate;
   const day = getDay(t, true);
   if(day.closed) day.closed = false; // إعادة فتح تلقائية عند إضافة مصروف جديد لهذا اليوم
-  const amount = Number(document.getElementById('amountInput').value || 0);
+  const amount = Number(normalizeDigits(document.getElementById('amountInput').value) || 0);
   const note = document.getElementById('noteInput').value.trim();
+  const combinedSub = selectedSub2 ? `${selectedSub} · ${selectedSub2}` : (selectedSub || null);
   day.expenses.push({
     id: Date.now()+'_'+Math.random().toString(36).slice(2,7),
     category: selectedCat,
-    sub: selectedSub || null,
+    sub: combinedSub,
     amount: amount,
     note: note,
     time: new Date().toISOString()
@@ -636,7 +676,7 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
   saveDB();
   document.getElementById('amountInput').value='';
   document.getElementById('noteInput').value='';
-  selectedCat = null; selectedSub = null;
+  selectedCat = null; selectedSub = null; selectedSub2 = null;
   renderCats(); renderSubs(); updateAddBtnState();
   setSelectedEntryDate(todayStr()); // رجوع تلقائي لـ"اليوم" بعد كل إضافة
   renderAll();
@@ -798,7 +838,7 @@ function editRowHtml(e, dateStr){
       </select>
       <div id="edit-sub-wrap">${subSelectHtml(cat.id, e.sub)}</div>
       <div class="amount-wrap">
-        <input type="number" class="edit-input" id="edit-amt" value="${e.amount}" step="0.5" min="0">
+        <input type="text" class="edit-input" id="edit-amt" value="${e.amount}" inputmode="decimal" oninput="this.value=normalizeDigits(this.value)">
         <span>ريال</span>
       </div>
       <input type="text" class="edit-input" id="edit-note" value="${escapeHtml(e.note||'')}" placeholder="ملاحظة">
@@ -852,7 +892,7 @@ function saveEditedExpense(){
   if(!ref){ editingExpense=null; refreshAfterEditUiChange(); return; }
   const catId = document.getElementById('edit-cat').value;
   const subEl = document.getElementById('edit-sub');
-  const amount = Number(document.getElementById('edit-amt').value || 0);
+  const amount = Number(normalizeDigits(document.getElementById('edit-amt').value) || 0);
   const note = document.getElementById('edit-note').value.trim();
 
   ref.expense.category = catId;
