@@ -38,7 +38,6 @@ body{
 .wrap{max-width:520px;margin:0 auto;padding:16px 14px 0;}
 .mono{font-family:'JetBrains Mono','Cairo',monospace;}
 
-/* header */
 header.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 header.top h1{font-size:19px;font-weight:800;margin:0;}
 .salary-pill{
@@ -50,7 +49,6 @@ header.top h1{font-size:19px;font-weight:800;margin:0;}
 .salary-pill .sp-count b{color:var(--accent);}
 .salary-pill .sp-date{font-size:10px;color:var(--muted2);align-self:center;text-align:center;width:100%;}
 
-/* metrics */
 .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
 .metric{
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
@@ -62,14 +60,12 @@ header.top h1{font-size:19px;font-weight:800;margin:0;}
 .metric.spent .val{transition:color .2s;}
 .metric.saved .val{color:var(--blue);}
 
-/* card generic */
 .card{
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   padding:14px;margin-bottom:14px;
 }
 .card h2{font-size:14px;margin:0 0 12px;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:6px;}
 
-/* categories grid */
 .date-select{position:relative;margin-bottom:12px;}
 .date-pill{
   display:inline-flex;align-items:center;gap:7px;background:var(--card2);
@@ -144,7 +140,6 @@ input:focus{outline:none;border-color:var(--accent);}
 .actions-row{display:flex;gap:8px;margin-bottom:14px;}
 .actions-row .btn{flex:1;}
 
-/* chart */
 .chart-scroll{overflow-x:auto;padding-bottom:4px;}
 .chart-scroll::-webkit-scrollbar{height:5px;}
 .chart-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:10px;}
@@ -194,7 +189,6 @@ input:focus{outline:none;border-color:var(--accent);}
 .edit-btn:active{background:rgba(108,140,255,.15);color:var(--accent);}
 .empty-note{color:var(--muted2);font-size:12.5px;text-align:center;padding:10px 0;}
 
-/* تعديل مصروف داخل السجل */
 .exp-row.edit-row{display:block;padding:10px 0;}
 .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}
 .edit-input{
@@ -205,13 +199,11 @@ select.edit-input{appearance:none;}
 .edit-actions{display:flex;gap:8px;}
 .edit-actions .btn{flex:1;padding:8px;font-size:12.5px;}
 
-/* search */
 .search-box{position:relative;margin-bottom:14px;}
 .search-box input{padding-left:34px;}
 .search-box .sic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;}
 .search-results{margin-top:10px;}
 
-/* log */
 .month-block{margin-bottom:10px;}
 .month-head{
   display:flex;justify-content:space-between;align-items:center;cursor:pointer;
@@ -329,36 +321,11 @@ select.edit-input{appearance:none;}
 </div>
 
 <script>
-/* ============ إعدادات ثابتة ============ */
 const DAILY_LIMIT = 200;
 const START_DATE = '2026-07-14';
-const SALARY_DAY = 27; // افتراض: الراتب يوم 27 من كل شهر ميلادي — عدّل SALARY_DAY لو مختلف
+const SALARY_DAY = 27;
 const STORAGE_KEY = 'msarraf_data_v1';
 const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
-
-/* ============ مزامنة Google Sheets (Action-Based) ============ */
-const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbys1UHnri7GsCyNR-DC5wYpwrJIVSgYcxF-Qxf9MbtiXOxaof03fPg0iJ1H_nzUqSKn/exec';
-
-// يرسل حدث واحد فقط (إضافة/تعديل/حذف/إقفال) لسكربت الشيت، بدون انتظار الرد
-function sendToSheet(action, payload){
-  try{
-    fetch(SHEET_WEB_APP_URL, {
-      method: 'POST',
-      // نستخدم text/plain لتفادي طلب OPTIONS المسبق (preflight) اللي ما يدعمه Apps Script
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({action:action}, payload))
-    }).catch(function(e){ console.error('فشل إرسال الحدث لجوجل شيت:', e); });
-  } catch(e){
-    console.error('فشل إرسال الحدث لجوجل شيت:', e);
-  }
-}
-
-// لا نرسل تفاصيل الفئة الفرعية لفئة "اجتماعي" حفاظاً على الخصوصية (نفس منطق hideSubInLog)
-function subForSheet(catId, sub){
-  const cat = CAT_MAP[catId];
-  if(cat && cat.hideSubInLog) return '';
-  return sub || '';
-}
 
 const CATEGORIES = [
   {id:'sadaqah',   name:'صدقة',            icon:'🤲', subs:[]},
@@ -379,13 +346,11 @@ const WEEKDAYS = ['الأحد','الاثنين','الثلاثاء','الأربع
 const WEEKDAYS_EN_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
-/* ============ أدوات تاريخ (ميلادي دائمًا) ============ */
-/* ============ تحويل الأرقام العربية/الفارسية لأرقام إنجليزية ============ */
 function normalizeDigits(str){
   if(str==null) return str;
   return String(str)
-    .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660)) // أرقام عربية هندية
-    .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0)); // أرقام فارسية
+    .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0));
 }
 
 function fmtDate(d){
@@ -399,7 +364,7 @@ function parseDate(s){
 function todayStr(){ return fmtDate(new Date()); }
 function isWeekend(dateStr){
   const wd = parseDate(dateStr).getDay();
-  return wd===5 || wd===6; // الجمعة=5 السبت=6
+  return wd===5 || wd===6;
 }
 function weekdayName(dateStr){ return WEEKDAYS[parseDate(dateStr).getDay()]; }
 function weekdayNameEnShort(dateStr){ return WEEKDAYS_EN_SHORT[parseDate(dateStr).getDay()]; }
@@ -422,10 +387,8 @@ function dateRange(startStr, endStr){
   return out;
 }
 
-/* ============ إدارة قاعدة البيانات والتزامن ============ */
 let db = { monthStart: START_DATE, days:{}, closedMonths:[] };
 
-// دالة جلب البيانات السحابية
 async function syncFromCloud(){
   try{
     const response = await fetch(FIREBASE_URL);
@@ -449,7 +412,6 @@ async function syncFromCloud(){
   }
 }
 
-// دالة رفع البيانات فورياً عند أي تعديل
 async function syncToCloud(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   try{
@@ -472,7 +434,6 @@ function setSyncStatus(text, color){
   el.style.color = color;
 }
 
-// دالة الحفظ الوسيطة — تحفظ محليًا فورًا ثم ترفع للسحاب
 function saveDB(){
   syncToCloud();
 }
@@ -499,15 +460,13 @@ function dayColor(total){
   return 'var(--red)';
 }
 
-/* ============ حالة الواجهة ============ */
 let selectedCat = null;
 let selectedSub = null;
 let selectedSub2 = null;
 let selectedChartDay = null;
-let openMonthKeys = new Set(); // لأشهر السجل المقفلة المفتوحة للعرض
-let openDayKeys = new Set();   // لأيام مفتوحة داخل السجل
+let openMonthKeys = new Set();
+let openDayKeys = new Set();
 
-/* ============ عداد الراتب ============ */
 function renderSalaryCountdown(){
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -518,7 +477,6 @@ function renderSalaryCountdown(){
   document.getElementById('salaryDate').textContent = humanDateFull(todayStr());
 }
 
-/* ============ المقاييس العلوية ============ */
 function renderMetrics(){
   document.getElementById('mLimit').textContent = DAILY_LIMIT;
 
@@ -529,7 +487,6 @@ function renderMetrics(){
   const spentEl = document.querySelector('.metric.spent .val');
   spentEl.style.color = spent >= DAILY_LIMIT ? 'var(--red)' : 'var(--green)';
 
-  // التوفير: تراكمي لأيام هذا الشهر المقفلة فقط
   let saved = 0;
   const monthDates = dateRange(db.monthStart, t);
   monthDates.forEach(ds=>{
@@ -541,13 +498,12 @@ function renderMetrics(){
   savedEl.style.color = saved > 1000 ? 'var(--green)' : (saved > 500 ? 'var(--blue)' : 'var(--text)');
 }
 
-/* ============ اختيار تاريخ إضافة المصروف (اليوم / أمس / تاريخ آخر) ============ */
 let selectedEntryDate = todayStr();
 
 function clampEntryDate(ds){
   const t = todayStr();
-  if(ds > t) return t;              // ما نسمح بتاريخ مستقبلي
-  if(ds < db.monthStart) return db.monthStart; // ضمن الشهر الحالي المفتوح فقط
+  if(ds > t) return t;
+  if(ds < db.monthStart) return db.monthStart;
   return ds;
 }
 function setSelectedEntryDate(ds){
@@ -615,7 +571,6 @@ function initDateSelector(){
   updateDatePillLabel();
 }
 
-/* ============ نموذج إضافة مصروف ============ */
 function renderCats(){
   const grid = document.getElementById('catsGrid');
   grid.innerHTML = CATEGORIES.map(c=>`
@@ -684,7 +639,7 @@ document.getElementById('amountInput').addEventListener('input', (e)=>{
 document.getElementById('addBtn').addEventListener('click', ()=>{
   const t = selectedEntryDate;
   const day = getDay(t, true);
-  if(day.closed) day.closed = false; // إعادة فتح تلقائية عند إضافة مصروف جديد لهذا اليوم
+  if(day.closed) day.closed = false;
   const amount = Number(normalizeDigits(document.getElementById('amountInput').value) || 0);
   const note = document.getElementById('noteInput').value.trim();
   const combinedSub = selectedSub2 ? `${selectedSub} · ${selectedSub2}` : (selectedSub || null);
@@ -698,30 +653,19 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
   };
   day.expenses.push(newExpense);
   saveDB();
-  sendToSheet('add', {
-    id: newExpense.id,
-    date: t,
-    category: newExpense.category,
-    sub: subForSheet(newExpense.category, newExpense.sub),
-    amount: newExpense.amount,
-    note: newExpense.note
-  });
   document.getElementById('amountInput').value='';
   document.getElementById('noteInput').value='';
   selectedCat = null; selectedSub = null; selectedSub2 = null;
   renderCats(); renderSubs(); updateAddBtnState();
-  setSelectedEntryDate(todayStr()); // رجوع تلقائي لـ"اليوم" بعد كل إضافة
+  setSelectedEntryDate(todayStr());
   renderAll();
 });
 
-/* ============ إقفال اليوم / الشهر ============ */
 document.getElementById('closeDayBtn').addEventListener('click', ()=>{
   const t = todayStr();
-  const day = getDay(t, true); // الإقفال يشتغل حتى لو صفر مصاريف
-  const total = dayTotal(day);
+  const day = getDay(t, true);
   day.closed = true;
   saveDB();
-  sendToSheet('closeDay', { date: t, total: total });
   renderAll();
 });
 const closeMonthBtn = document.getElementById('closeMonthBtn');
@@ -741,9 +685,8 @@ closeMonthBtn.addEventListener('click', ()=>{
   closeMonthBtn.textContent = closeMonthBtn.dataset.origText;
 
   const t = todayStr();
-  const monthStartOrig = db.monthStart; // نحفظه قبل ما يتغيّر
   const today = getDay(t, true);
-  today.closed = true; // إقفال اليوم الحالي ضمن إقفال الشهر
+  today.closed = true;
 
   const monthDates = dateRange(db.monthStart, t);
   let totalSpent=0, totalSaved=0;
@@ -763,12 +706,10 @@ closeMonthBtn.addEventListener('click', ()=>{
   db.days = {};
   db.monthStart = addDays(t,1);
   saveDB();
-  sendToSheet('closeMonth', { start: monthStartOrig, end: t, totalSpent: totalSpent, totalSaved: totalSaved });
   setSelectedEntryDate(todayStr());
   renderAll();
 });
 
-/* ============ الرسم البياني (٧ أيام + تمرير) ============ */
 function renderChart(){
   const t = todayStr();
   const allDates = dateRange(db.monthStart, t);
@@ -810,7 +751,6 @@ function renderChart(){
     });
   });
 
-  // تمرير تلقائي لآخر الأيام عند أول تحميل
   const scroller = document.getElementById('chartScroll');
   if(!scroller.dataset.scrolled){
     scroller.scrollLeft = scroller.scrollWidth;
@@ -834,8 +774,7 @@ function expensesHtml(dateStr, dayObj){
   return `<div class="daydetail">${head}${rows}</div>`;
 }
 
-/* ============ صف مصروف واحد (عرض عادي أو وضع تعديل) ============ */
-let editingExpense = null; // {date, id}
+let editingExpense = null;
 
 function expenseRowHtml(e, dateStr, opts){
   opts = opts || {};
@@ -948,14 +887,6 @@ function saveEditedExpense(){
   }
 
   saveDB();
-  sendToSheet('edit', {
-    id: ref.expense.id,
-    date: editingExpense.date,
-    category: ref.expense.category,
-    sub: subForSheet(ref.expense.category, ref.expense.sub),
-    amount: ref.expense.amount,
-    note: ref.expense.note
-  });
   editingExpense = null;
   refreshAfterEditUiChange();
 }
@@ -963,7 +894,6 @@ function escapeHtml(s){
   return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-/* ============ السجل ============ */
 function renderLog(){
   const container = document.getElementById('logContainer');
   const t = todayStr();
@@ -1034,7 +964,7 @@ function dayRowHtml(dateStr, dayObj){
 }
 function attachDayRowEvents(container){
   container.querySelectorAll('.day-row').forEach(el=>{
-    if(el.dataset.today==='1') return; // يوم اليوم يفضل مفتوح دايماً
+    if(el.dataset.today==='1') return;
     el.addEventListener('click', ()=>{
       const key = el.dataset.daykey;
       if(openDayKeys.has(key)) openDayKeys.delete(key); else openDayKeys.add(key);
@@ -1043,7 +973,6 @@ function attachDayRowEvents(container){
   });
 }
 
-/* ============ البحث ============ */
 function allExpensesFlat(){
   const list = [];
   Object.keys(db.days).forEach(ds=>{
@@ -1074,7 +1003,6 @@ document.getElementById('searchInput').addEventListener('input', (e)=>{
   box.innerHTML = results.map(x=> expenseRowHtml(x, x.date, {showDate:true})).join('');
 });
 
-/* ============ حذف مصروف ============ */
 function handleDeleteClick(btn, dateStr, id){
   if(btn.dataset.confirm==='1'){
     clearTimeout(btn._delTimer);
@@ -1121,7 +1049,6 @@ function deleteExpense(dateStr, id){
 
   if(removed){
     saveDB();
-    sendToSheet('delete', { id: id });
     renderAll();
     const searchInput = document.getElementById('searchInput');
     if(searchInput.value.trim()){
@@ -1130,7 +1057,6 @@ function deleteExpense(dateStr, id){
   }
 }
 
-/* ============ تحديث شامل ============ */
 function renderAll(){
   renderSalaryCountdown();
   renderMetrics();
@@ -1142,13 +1068,10 @@ renderCats();
 renderSubs();
 initDateSelector();
 
-// تشغيل المزامنة وجلب البيانات السحابية فور فتح الصفحة
 syncFromCloud();
 
-// عداد الراتب يتحدث كل دقيقة
 setInterval(renderSalaryCountdown, 60*1000);
 
-// تحديث البيانات تلقائياً من السيرفر كل 30 ثانية للمزامنة اللحظية بين الأجهزة
 setInterval(syncFromCloud, 30*1000);
 </script>
 </body>
