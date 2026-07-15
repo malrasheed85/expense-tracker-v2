@@ -389,6 +389,24 @@ function dateRange(startStr, endStr){
 
 let db = { monthStart: START_DATE, days:{}, closedMonths:[] };
 
+// إصلاح ذاتي لأي سجل يوم قديم/ناقص (مثلاً يوم مقفول بدون مصفوفة expenses)
+function repairDB(){
+  if(db.days){
+    Object.keys(db.days).forEach(ds=>{
+      if(!Array.isArray(db.days[ds].expenses)) db.days[ds].expenses = [];
+    });
+  }
+  if(Array.isArray(db.closedMonths)){
+    db.closedMonths.forEach(m=>{
+      if(m && m.days){
+        Object.keys(m.days).forEach(ds=>{
+          if(!Array.isArray(m.days[ds].expenses)) m.days[ds].expenses = [];
+        });
+      }
+    });
+  }
+}
+
 async function syncFromCloud(){
   try{
     const response = await fetch(FIREBASE_URL);
@@ -397,6 +415,7 @@ async function syncFromCloud(){
       db = cloudData;
       if(!db.closedMonths) db.closedMonths = [];
       if(!db.days) db.days = {};
+      repairDB();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
       setSyncStatus('🔄 البيانات متزامنة مع السحاب', 'var(--green)');
     } else {
@@ -407,7 +426,7 @@ async function syncFromCloud(){
     console.error('خطأ في جلب البيانات من السحاب، تم التحويل للذاكرة المحلية:', e);
     setSyncStatus('⚠️ يعمل دون اتصال - لم يتم التزامن', 'var(--orange)');
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){ try{ db = JSON.parse(raw); }catch(e2){ console.error('DB parse error', e2); } }
+    if(raw){ try{ db = JSON.parse(raw); repairDB(); }catch(e2){ console.error('DB parse error', e2); } }
     renderAll();
   }
 }
@@ -446,7 +465,7 @@ function getDay(dateStr, create){
   return db.days[dateStr];
 }
 function dayTotal(dayObj){
-  if(!dayObj) return 0;
+  if(!dayObj || !Array.isArray(dayObj.expenses)) return 0;
   return dayObj.expenses.reduce((s,e)=>{
     const cat = CAT_MAP[e.category];
     if(cat && cat.excludeFromBudget) return s;
