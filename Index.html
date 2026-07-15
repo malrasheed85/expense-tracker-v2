@@ -109,8 +109,8 @@ header.top h1{font-size:19px;font-weight:800;margin:0;}
 }
 .cat-btn .ic{font-size:16px;line-height:1;}
 .cat-btn .nm{font-size:9.5px;color:var(--muted);text-align:center;line-height:1.1;}
-.cat-btn.active{border-color:var(--accent);background:rgba(108,140,255,.12);}
-.cat-btn.active .nm{color:var(--text);}
+.cat-btn.active{background:rgba(108,140,255,.14);border-bottom:3px solid var(--accent);padding-bottom:6px;}
+.cat-btn.active .nm{color:var(--text);font-weight:700;}
 
 .subs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;justify-content:center;}
 .sub-chip{
@@ -134,7 +134,7 @@ input:focus{outline:none;border-color:var(--accent);}
   font-size:13.5px;cursor:pointer;transition:.15s;
 }
 .btn-primary{background:var(--accent);color:#0d0f14;width:100%;padding:12px;font-size:14px;}
-.btn-primary:disabled{background:var(--accent-dim);color:#8892b0;cursor:not-allowed;}
+.btn-primary:disabled{background:var(--card2);color:var(--muted2);cursor:not-allowed;border:1px dashed var(--line);opacity:.7;}
 .btn-ghost{background:var(--card2);color:var(--text);border:1px solid var(--line);}
 .btn-danger-ghost{background:var(--card2);color:var(--red);border:1px solid var(--line);}
 .actions-row{display:flex;gap:8px;margin-bottom:14px;}
@@ -232,6 +232,15 @@ select.edit-input{appearance:none;}
 
 .badge{font-size:10px;padding:2px 7px;border-radius:999px;background:var(--card2);color:var(--muted);}
 
+.unclosed-banner{
+  background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.4);border-radius:12px;
+  padding:12px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;
+  gap:10px;cursor:pointer;
+}
+.unclosed-banner .ub-l{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);}
+.unclosed-banner .ub-l b{color:var(--orange);}
+.unclosed-banner .ub-r{font-size:11px;color:var(--orange);font-weight:700;white-space:nowrap;}
+
 .hint{font-size:11px;color:var(--muted2);text-align:center;margin:10px 0 20px;line-height:1.7;}
 </style>
 </head>
@@ -248,6 +257,8 @@ select.edit-input{appearance:none;}
 
   <div id="syncStatus" style="font-size:11px;text-align:center;margin-bottom:12px;font-weight:bold;color:var(--muted);">جاري الاتصال بالسيرفر السحابي...</div>
 
+  <div id="unclosedBanner" style="display:none;"></div>
+
   <div class="metrics">
     <div class="metric limit">
       <div class="lbl">الحد اليومي</div>
@@ -263,7 +274,7 @@ select.edit-input{appearance:none;}
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="addExpenseCard">
     <h2>➕ إضافة مصروف</h2>
     <div class="date-select" id="dateSelect">
       <div class="date-pill" id="datePillBtn">
@@ -301,7 +312,7 @@ select.edit-input{appearance:none;}
     <div id="dayDetail"></div>
   </div>
 
-  <div class="actions-row">
+  <div class="actions-row" id="actionsRow">
     <button class="btn btn-ghost" id="closeDayBtn">🔒 إقفال اليوم</button>
     <button class="btn btn-danger-ghost" id="closeMonthBtn">📕 إقفال الشهر</button>
   </div>
@@ -681,10 +692,11 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
 });
 
 document.getElementById('closeDayBtn').addEventListener('click', ()=>{
-  const t = todayStr();
+  const t = selectedEntryDate;
   const day = getDay(t, true);
   day.closed = true;
   saveDB();
+  setSelectedEntryDate(todayStr());
   renderAll();
 });
 const closeMonthBtn = document.getElementById('closeMonthBtn');
@@ -973,7 +985,10 @@ function dayRowHtml(dateStr, dayObj){
         <span class="dot" style="background:${color}"></span>
         <span class="dr-date"><span class="wd">${weekdayName(dateStr)}</span>${humanDate(dateStr)}${isToday?' · اليوم':''}</span>
       </div>
-      <div class="dr-r">${total.toFixed(total%1===0?0:2)}${statusTxt}</div>
+      <div class="dr-r">
+        ${closed ? `<button class="edit-btn" onclick="event.stopPropagation(); addToClosedDay('${dateStr}')">➕</button>` : ''}
+        ${total.toFixed(total%1===0?0:2)}${statusTxt}
+      </div>
     </div>
     <div class="day-expenses ${isOpen?'open':''}" id="${key}">
       ${isOpen ? expensesHtml(dateStr, dayObj) : ''}
@@ -990,6 +1005,11 @@ function attachDayRowEvents(container){
       renderLog();
     });
   });
+}
+function addToClosedDay(dateStr){
+  setSelectedEntryDate(dateStr);
+  const card = document.getElementById('addExpenseCard');
+  if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 function allExpensesFlat(){
@@ -1076,18 +1096,55 @@ function deleteExpense(dateStr, id){
   }
 }
 
+/* ============ تذكير باليوم السابق غير المقفول ============ */
+function findUnclosedPastDay(){
+  const t = todayStr();
+  const dates = dateRange(db.monthStart, addDays(t,-1));
+  for(let i=dates.length-1;i>=0;i--){
+    const ds = dates[i];
+    const d = db.days[ds];
+    if(d && !d.closed) return ds;
+  }
+  return null;
+}
+function jumpToCloseDay(dateStr){
+  setSelectedEntryDate(dateStr);
+  const row = document.getElementById('actionsRow');
+  if(row) row.scrollIntoView({behavior:'smooth', block:'center'});
+}
+function renderUnclosedBanner(){
+  const box = document.getElementById('unclosedBanner');
+  const ds = findUnclosedPastDay();
+  if(!ds){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  box.innerHTML = `<div class="unclosed-banner" onclick="jumpToCloseDay('${ds}')">
+    <div class="ub-l"><span>⏰</span><span>يوم <b>${humanDate(ds)}</b> لم يتم إقفاله لحد الآن</span></div>
+    <div class="ub-r">إقفاله ←</div>
+  </div>`;
+}
+
 function renderAll(){
   renderSalaryCountdown();
   renderMetrics();
   renderChart();
   renderDayDetail();
   renderLog();
+  renderUnclosedBanner();
 }
+
 renderCats();
 renderSubs();
 initDateSelector();
 
-syncFromCloud();
+// تصفير لمرة واحدة بناء على طلب صريح بتاريخ 2026-07-15 — يشتغل مرة وحدة بس ثم يختفي أثره تلقائيًا
+if(!localStorage.getItem('did_reset_20260715')){
+  localStorage.setItem('did_reset_20260715', '1');
+  db = { monthStart: todayStr(), days:{}, closedMonths:[] };
+  saveDB();
+  renderAll();
+} else {
+  syncFromCloud();
+}
 
 setInterval(renderSalaryCountdown, 60*1000);
 
