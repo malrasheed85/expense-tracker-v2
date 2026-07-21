@@ -143,7 +143,7 @@ input:focus{outline:none;border-color:var(--accent);}
 .chart-scroll{overflow-x:auto;padding-bottom:4px;}
 .chart-scroll::-webkit-scrollbar{height:5px;}
 .chart-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:10px;}
-.chart-inner{display:flex;gap:10px;align-items:flex-end;height:170px;position:relative;padding-top:10px;min-width:100%;}
+.chart-inner{display:flex;direction:ltr;gap:10px;align-items:flex-end;height:170px;position:relative;padding-top:10px;min-width:100%;}
 .limit-line{
   position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--muted2);
   z-index:0;
@@ -370,10 +370,9 @@ select.edit-input{appearance:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 const DAILY_LIMIT = 200;
-const START_DATE = '2026-07-14';
+const START_DATE = '2026-07-21';
 const SALARY_DAY = 27;
-// تعديل لمرة واحدة: الراتب هذا الشهر تأخر بسبب إقفال السنة المالية، يستهدف ٢٧ أغسطس ٢٠٢٦ تحديدًا بدل أقرب ٢٧ تلقائي
-const SALARY_OVERRIDE_DATE = '2026-08-27';
+const NEXT_SALARY_OVERRIDE = '2026-08-27';
 const STORAGE_KEY = 'msarraf_data_v1';
 const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
 
@@ -460,6 +459,20 @@ function repairDB(){
   }
 }
 
+// تنظيف الأيام القديمة مرة واحدة وجعل بداية الفترة هي التاريخ المحدد في START_DATE.
+function enforceStartDate(){
+  let changed = db.monthStart !== START_DATE;
+  if(!db.days) db.days = {};
+  Object.keys(db.days).forEach(ds=>{
+    if(ds < START_DATE){
+      delete db.days[ds];
+      changed = true;
+    }
+  });
+  db.monthStart = START_DATE;
+  return changed;
+}
+
 async function syncFromCloud(){
   try{
     const response = await fetch(FIREBASE_URL);
@@ -469,7 +482,9 @@ async function syncFromCloud(){
       if(!db.closedMonths) db.closedMonths = [];
       if(!db.days) db.days = {};
       repairDB();
+      const cleanedOldDays = enforceStartDate();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      if(cleanedOldDays) await syncToCloud();
       setSyncStatus('🔄 البيانات متزامنة مع السحاب', 'var(--green)');
     } else {
       await syncToCloud();
@@ -555,11 +570,17 @@ let openDayKeys = new Set();
 function renderSalaryCountdown(){
   const today = new Date();
   today.setHours(0,0,0,0);
-  const target = parseDate(SALARY_OVERRIDE_DATE);
-  target.setHours(0,0,0,0);
-  const diffDays = Math.max(0, Math.round((target - today)/86400000));
+  const overrideTarget = parseDate(NEXT_SALARY_OVERRIDE);
+  let target;
+  if(today < overrideTarget){
+    target = overrideTarget;
+  } else {
+    target = new Date(today.getFullYear(), today.getMonth(), SALARY_DAY);
+    if(target <= today){ target = new Date(today.getFullYear(), today.getMonth()+1, SALARY_DAY); }
+  }
+  const diffDays = Math.round((target - today)/86400000);
   document.getElementById('salaryCountdown').textContent = diffDays;
-  document.getElementById('salaryDate').textContent = humanDateFull(SALARY_OVERRIDE_DATE);
+  document.getElementById('salaryDate').textContent = humanDateFull(fmtDate(target));
 }
 
 function renderMetrics(){
