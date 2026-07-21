@@ -1255,14 +1255,8 @@ document.getElementById('loginPassword').addEventListener('keydown', (e)=>{
   if(e.key==='Enter') attemptLogin();
 });
 
-(async function initAuth(){
-  const { data:{ session } } = await supa.auth.getSession();
-  if(session){
-    startApp();
-  } else {
-    document.getElementById('loginOverlay').style.display = 'flex';
-  }
-})();
+// تشغيل التطبيق مباشرة بدون تسجيل دخول.
+startApp();
 </script>
 </body>
 </html>
