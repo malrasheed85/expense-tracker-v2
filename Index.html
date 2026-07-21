@@ -372,6 +372,8 @@ select.edit-input{appearance:none;}
 const DAILY_LIMIT = 200;
 const START_DATE = '2026-07-14';
 const SALARY_DAY = 27;
+// تعديل لمرة واحدة: الراتب هذا الشهر تأخر بسبب إقفال السنة المالية، يستهدف ٢٧ أغسطس ٢٠٢٦ تحديدًا بدل أقرب ٢٧ تلقائي
+const SALARY_OVERRIDE_DATE = '2026-08-27';
 const STORAGE_KEY = 'msarraf_data_v1';
 const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
 
@@ -553,11 +555,11 @@ let openDayKeys = new Set();
 function renderSalaryCountdown(){
   const today = new Date();
   today.setHours(0,0,0,0);
-  let target = new Date(today.getFullYear(), today.getMonth(), SALARY_DAY);
-  if(target <= today){ target = new Date(today.getFullYear(), today.getMonth()+1, SALARY_DAY); }
-  const diffDays = Math.round((target - today)/86400000);
+  const target = parseDate(SALARY_OVERRIDE_DATE);
+  target.setHours(0,0,0,0);
+  const diffDays = Math.max(0, Math.round((target - today)/86400000));
   document.getElementById('salaryCountdown').textContent = diffDays;
-  document.getElementById('salaryDate').textContent = humanDateFull(todayStr());
+  document.getElementById('salaryDate').textContent = humanDateFull(SALARY_OVERRIDE_DATE);
 }
 
 function renderMetrics(){
@@ -1047,7 +1049,7 @@ function dayRowHtml(dateStr, dayObj){
     <div class="day-row ${weekendCls}" data-daykey="${key}" data-date="${dateStr}" data-today="${isToday?'1':'0'}">
       <div class="dr-l">
         <span class="dot ${dotCls}" style="background:${color}"></span>
-        <span class="dr-date"><span class="wd">${weekdayName(dateStr)}</span>${humanDate(dateStr)}${isToday?' · اليوم':''}</span>
+        <span class="dr-date"><span class="wd">${weekdayName(dateStr)} </span>${humanDate(dateStr)}${isToday?' · اليوم':''}</span>
       </div>
       <div class="dr-r">
         ${closed ? `<button class="edit-btn" onclick="event.stopPropagation(); addToClosedDay('${dateStr}')">➕</button>` : ''}
