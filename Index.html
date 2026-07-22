@@ -274,10 +274,8 @@ select.edit-input{appearance:none;}
     <div class="li-icon">🔒</div>
     <h2>تسجيل الدخول</h2>
     <p class="li-sub">متتبع الصرف الشهري</p>
-    <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" autocomplete="username">
-    <input type="password" id="loginPassword" placeholder="كلمة المرور" autocomplete="current-password">
-    <button class="btn btn-primary" id="loginBtn">دخول</button>
-    <div class="li-err" id="loginErr">بيانات الدخول غير صحيحة</div>
+    <button class="btn btn-primary" id="loginBtn">الدخول بحساب Google</button>
+    <div class="li-err" id="loginErr">تعذر تسجيل الدخول. حاول مرة أخرى.</div>
   </div>
 </div>
 
@@ -368,6 +366,8 @@ select.edit-input{appearance:none;}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-auth-compat.js"></script>
 <script>
 const DAILY_LIMIT = 200;
 const START_DATE = '2026-07-21';
@@ -375,6 +375,25 @@ const SALARY_DAY = 27;
 const NEXT_SALARY_OVERRIDE = '2026-08-27';
 const STORAGE_KEY = 'msarraf_data_v1';
 const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
+const ALLOWED_EMAIL = 'm.alrasheed.yu@gmail.com';
+
+firebase.initializeApp({
+  apiKey: 'AIzaSyAPMKvd8yz4CBWYlggDSgtYNI5XikvJw8g',
+  authDomain: 'my-monthly-expenses-9c3ac.firebaseapp.com',
+  databaseURL: 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com',
+  projectId: 'my-monthly-expenses-9c3ac',
+  storageBucket: 'my-monthly-expenses-9c3ac.firebasestorage.app',
+  messagingSenderId: '972571151010',
+  appId: '1:972571151010:web:a598b8af4ec125ccc225fb'
+});
+const firebaseAuth = firebase.auth();
+let firebaseUser = null;
+
+async function authenticatedFirebaseUrl(){
+  if(!firebaseUser) throw new Error('يجب تسجيل الدخول أولاً');
+  const token = await firebaseUser.getIdToken();
+  return `${FIREBASE_URL}?auth=${encodeURIComponent(token)}`;
+}
 
 const SUPABASE_URL = 'https://gyjvoxzowcueqsvgqxzy.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_uHpHfc8lTtPUKHHKDHfj9A_OI2VSrw5';
@@ -475,7 +494,8 @@ function enforceStartDate(){
 
 async function syncFromCloud(){
   try{
-    const response = await fetch(FIREBASE_URL);
+    const response = await fetch(await authenticatedFirebaseUrl());
+    if(!response.ok) throw new Error(`Firebase read failed: ${response.status}`);
     const cloudData = await response.json();
     if(cloudData){
       db = cloudData;
@@ -502,11 +522,12 @@ async function syncFromCloud(){
 async function syncToCloud(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   try{
-    await fetch(FIREBASE_URL, {
+    const response = await fetch(await authenticatedFirebaseUrl(), {
       method:'PUT',
       body: JSON.stringify(db),
       headers:{ 'Content-Type':'application/json' }
     });
+    if(!response.ok) throw new Error(`Firebase write failed: ${response.status}`);
     setSyncStatus('🔄 البيانات متزامنة مع السحاب', 'var(--green)');
   } catch(e){
     console.error('خطأ في رفع البيانات للسحاب:', e);
@@ -1218,7 +1239,10 @@ function renderAll(){
   renderUnclosedBanner();
 }
 
+let appStarted = false;
 function startApp(){
+  if(appStarted) return;
+  appStarted = true;
   document.getElementById('loginOverlay').style.display = 'none';
   document.getElementById('appWrap').style.display = 'block';
 
@@ -1233,30 +1257,41 @@ function startApp(){
 }
 
 async function attemptLogin(){
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
   const errBox = document.getElementById('loginErr');
   errBox.classList.remove('show');
   const loginBtn = document.getElementById('loginBtn');
   loginBtn.disabled = true;
   loginBtn.textContent = 'جاري الدخول...';
-  const { data, error } = await supa.auth.signInWithPassword({ email, password });
-  loginBtn.disabled = false;
-  loginBtn.textContent = 'دخول';
-  if(error){
+  try{
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({prompt:'select_account'});
+    await firebaseAuth.signInWithPopup(provider);
+  } catch(error){
+    console.error('Firebase login error:', error);
     errBox.classList.add('show');
-    return;
+  } finally {
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'الدخول بحساب Google';
   }
-  startApp();
 }
 
 document.getElementById('loginBtn').addEventListener('click', attemptLogin);
-document.getElementById('loginPassword').addEventListener('keydown', (e)=>{
-  if(e.key==='Enter') attemptLogin();
+firebaseAuth.onAuthStateChanged(async user=>{
+  const errBox = document.getElementById('loginErr');
+  if(user && user.email && user.email.toLowerCase()===ALLOWED_EMAIL){
+    firebaseUser = user;
+    startApp();
+    return;
+  }
+  firebaseUser = null;
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('appWrap').style.display = 'none';
+  if(user){
+    errBox.textContent = 'هذا الحساب غير مصرح له بالدخول.';
+    errBox.classList.add('show');
+    await firebaseAuth.signOut();
+  }
 });
-
-// تشغيل التطبيق مباشرة بدون تسجيل دخول.
-startApp();
 </script>
 </body>
 </html>
