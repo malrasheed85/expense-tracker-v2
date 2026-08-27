@@ -510,19 +510,6 @@ function repairDB(){
   }
 }
 
-function enforceStartDate(){
-  let changed = db.monthStart !== START_DATE;
-  if(!db.days) db.days = {};
-  Object.keys(db.days).forEach(ds=>{
-    if(ds < START_DATE){
-      delete db.days[ds];
-      changed = true;
-    }
-  });
-  db.monthStart = START_DATE;
-  return changed;
-}
-
 async function syncFromCloud(){
   try{
     const response = await fetch(await authenticatedFirebaseUrl());
@@ -533,9 +520,7 @@ async function syncFromCloud(){
       if(!db.closedMonths) db.closedMonths = [];
       if(!db.days) db.days = {};
       repairDB();
-      const cleanedOldDays = enforceStartDate();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-      if(cleanedOldDays) await syncToCloud();
       setSyncStatus('🔄 البيانات متزامنة مع السحاب', 'var(--green)');
     } else {
       await syncToCloud();
