@@ -265,6 +265,18 @@ select.edit-input{appearance:none;}
   background:rgba(229,72,77,.1);border-radius:8px;padding:8px;
 }
 .login-box .li-err.show{display:block;}
+
+.early-close-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.early-close-box{
+  width:100%;max-width:320px;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:22px;text-align:center;
+}
+.early-close-box .ec-title{font-size:14px;margin-bottom:14px;line-height:1.6;}
+.early-close-box .btn{width:100%;margin-bottom:8px;}
+.early-close-box .ec-cancel{background:transparent;color:var(--muted2);}
 </style>
 </head>
 <body>
@@ -292,6 +304,7 @@ select.edit-input{appearance:none;}
   <div id="syncStatus" style="font-size:11px;text-align:center;margin-bottom:12px;font-weight:bold;color:var(--muted);">جاري الاتصال بالسيرفر السحابي...</div>
 
   <div id="unclosedBanner" style="display:none;"></div>
+  <div id="monthCloseBanner" style="display:none;"></div>
 
   <div class="metrics">
     <div class="metric limit">
@@ -457,6 +470,25 @@ function dateRange(startStr, endStr){
   const out=[]; let cur=startStr;
   while(cur<=endStr){ out.push(cur); cur=addDays(cur,1); }
   return out;
+}
+
+// يحسب أقرب تاريخ راتب يقع بتاريخ refDateStr أو بعده (يستخدم NEXT_SALARY_OVERRIDE إذا كان ينطبق، وإلا يوم الراتب الشهري الثابت)
+function nextSalaryOnOrAfter(refDateStr){
+  const ref = parseDate(refDateStr);
+  ref.setHours(0,0,0,0);
+  const overrideTarget = parseDate(NEXT_SALARY_OVERRIDE);
+  if(ref <= overrideTarget) return fmtDate(overrideTarget);
+  let target = new Date(ref.getFullYear(), ref.getMonth(), SALARY_DAY);
+  if(target < ref){
+    target = new Date(ref.getFullYear(), ref.getMonth()+1, SALARY_DAY);
+  }
+  return fmtDate(target);
+}
+
+// يحسب تاريخ إقفال الشهر الحالي (أي تاريخ الراتب اللي يجب أن يبدأ عنده الشهر الجديد) بناءً على بداية الشهر الحالي المفتوح
+function currentMonthCloseBoundary(){
+  const dayAfterStart = addDays(db.monthStart, 1);
+  return nextSalaryOnOrAfter(dayAfterStart);
 }
 
 let db = { monthStart: START_DATE, days:{}, closedMonths:[] };
@@ -795,6 +827,60 @@ document.getElementById('closeDayBtn').addEventListener('click', ()=>{
   setSelectedEntryDate(todayStr());
   renderAll();
 });
+
+// ==== منطق إقفال الشهر الجديد: يعتمد دائمًا على تاريخ الراتب الثابت (27/28) ====
+
+function performMonthClose(newMonthStart){
+  const endDate = addDays(newMonthStart, -1);
+  const monthDates = dateRange(db.monthStart, endDate);
+  let totalSpent=0, totalSaved=0;
+  const daysCopy = {};
+  monthDates.forEach(ds=>{
+    const d = db.days[ds] || {expenses:[], closed:true};
+    if(!d.closed) d.closed = true;
+    daysCopy[ds] = d;
+    totalSpent += dayTotal(d);
+    totalSaved += (DAILY_LIMIT - dayTotal(d));
+    delete db.days[ds];
+  });
+  const monthStartForArchive = db.monthStart;
+  db.closedMonths.unshift({
+    start: monthStartForArchive,
+    end: endDate,
+    days: daysCopy,
+    totalSpent, totalSaved
+  });
+  db.monthStart = newMonthStart;
+  saveDB();
+  archiveMonthToSupabase(monthStartForArchive, endDate, daysCopy, totalSpent, totalSaved);
+  setSelectedEntryDate(todayStr());
+  renderAll();
+}
+
+function openEarlyCloseModal(boundary){
+  const overlay = document.createElement('div');
+  overlay.className = 'early-close-overlay';
+  overlay.innerHTML = `
+    <div class="early-close-box">
+      <div class="ec-title">تقفل الشهر قبل يوم الراتب (${humanDate(boundary)})<br>الشهر الجديد يبدأ من وين؟</div>
+      <button class="btn btn-primary" id="ecToday">من اليوم</button>
+      <button class="btn btn-ghost" id="ecTomorrow">من بكرة</button>
+      <button class="btn ec-cancel" id="ecCancel">إلغاء</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const cleanup = ()=> overlay.remove();
+  document.getElementById('ecToday').addEventListener('click', ()=>{
+    cleanup();
+    performMonthClose(todayStr());
+  });
+  document.getElementById('ecTomorrow').addEventListener('click', ()=>{
+    cleanup();
+    performMonthClose(addDays(todayStr(),1));
+  });
+  document.getElementById('ecCancel').addEventListener('click', cleanup);
+}
+
 const closeMonthBtn = document.getElementById('closeMonthBtn');
 closeMonthBtn.addEventListener('click', ()=>{
   if(closeMonthBtn.dataset.confirm!=='1'){
@@ -812,32 +898,30 @@ closeMonthBtn.addEventListener('click', ()=>{
   closeMonthBtn.textContent = closeMonthBtn.dataset.origText;
 
   const t = todayStr();
-  const today = getDay(t, true);
-  today.closed = true;
+  const boundary = currentMonthCloseBoundary();
 
-  const monthDates = dateRange(db.monthStart, t);
-  let totalSpent=0, totalSaved=0;
-  const daysCopy = {};
-  monthDates.forEach(ds=>{
-    const d = db.days[ds] || {expenses:[], closed:true};
-    daysCopy[ds] = d;
-    totalSpent += dayTotal(d);
-    totalSaved += (DAILY_LIMIT - dayTotal(d));
-  });
-  const monthStartForArchive = db.monthStart;
-  db.closedMonths.unshift({
-    start: db.monthStart,
-    end: t,
-    days: daysCopy,
-    totalSpent, totalSaved
-  });
-  db.days = {};
-  db.monthStart = addDays(t,1);
-  saveDB();
-  archiveMonthToSupabase(monthStartForArchive, t, daysCopy, totalSpent, totalSaved);
-  setSelectedEntryDate(todayStr());
-  renderAll();
+  if(t < boundary){
+    openEarlyCloseModal(boundary);
+  } else {
+    performMonthClose(boundary);
+  }
 });
+
+function renderMonthCloseReminder(){
+  const box = document.getElementById('monthCloseBanner');
+  const boundary = currentMonthCloseBoundary();
+  const t = todayStr();
+  if(t > boundary){
+    box.style.display = 'block';
+    box.innerHTML = `<div class="unclosed-banner" onclick="document.getElementById('actionsRow').scrollIntoView({behavior:'smooth',block:'center'})">
+      <div class="ub-l"><span>🔔</span><span>تجاوزت تاريخ إقفال الشهر (<b>${humanDate(boundary)}</b>) — الشهر الحالي يحتاج إقفال</span></div>
+      <div class="ub-r">إقفاله ←</div>
+    </div>`;
+  } else {
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+}
 
 function renderChart(){
   const t = todayStr();
@@ -1236,6 +1320,7 @@ function renderAll(){
   renderDayDetail();
   renderLog();
   renderUnclosedBanner();
+  renderMonthCloseReminder();
 }
 
 let appStarted = false;
