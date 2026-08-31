@@ -638,7 +638,15 @@ function renderMetrics(){
   });
   document.getElementById('mSaved').textContent = saved.toFixed(saved%1===0?0:2);
   const savedEl = document.querySelector('.metric.saved .val');
-  savedEl.style.color = saved > 1000 ? 'var(--green)' : (saved > 500 ? 'var(--blue)' : 'var(--text)');
+  let savedColor;
+  if(saved >= 0){
+    savedColor = 'var(--green)';
+  } else if(saved > -500){
+    savedColor = 'var(--orange)';
+  } else {
+    savedColor = 'var(--red)';
+  }
+  savedEl.style.color = savedColor;
 }
 
 let selectedEntryDate = todayStr();
