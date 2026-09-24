@@ -385,7 +385,6 @@ select.edit-input{appearance:none;}
 const DAILY_LIMIT = 200;
 const START_DATE = '2026-07-21';
 const SALARY_DAY = 27;
-const NEXT_SALARY_OVERRIDE = '2026-08-27';
 const STORAGE_KEY = 'msarraf_data_v1';
 const FIREBASE_URL = 'https://my-monthly-expenses-9c3ac-default-rtdb.firebaseio.com/data.json';
 const ALLOWED_EMAIL = 'm.alrasheed.yu@gmail.com';
@@ -472,15 +471,22 @@ function dateRange(startStr, endStr){
   return out;
 }
 
-// يحسب أقرب تاريخ راتب يقع بتاريخ refDateStr أو بعده (يستخدم NEXT_SALARY_OVERRIDE إذا كان ينطبق، وإلا يوم الراتب الشهري الثابت)
+// يعدّل تاريخ راتب وقع بالجمعة أو السبت للخميس قبله (قاعدة عطلة نهاية الأسبوع)
+function adjustForWeekend(d){
+  const wd = d.getDay(); // الأحد=0 ... الجمعة=5 السبت=6
+  const r = new Date(d);
+  if(wd===5) r.setDate(r.getDate()-1);
+  else if(wd===6) r.setDate(r.getDate()-2);
+  return r;
+}
+
+// يحسب أقرب تاريخ راتب (معدّل لعطلة نهاية الأسبوع) يقع بتاريخ refDateStr أو بعده
 function nextSalaryOnOrAfter(refDateStr){
   const ref = parseDate(refDateStr);
   ref.setHours(0,0,0,0);
-  const overrideTarget = parseDate(NEXT_SALARY_OVERRIDE);
-  if(ref <= overrideTarget) return fmtDate(overrideTarget);
-  let target = new Date(ref.getFullYear(), ref.getMonth(), SALARY_DAY);
+  let target = adjustForWeekend(new Date(ref.getFullYear(), ref.getMonth(), SALARY_DAY));
   if(target < ref){
-    target = new Date(ref.getFullYear(), ref.getMonth()+1, SALARY_DAY);
+    target = adjustForWeekend(new Date(ref.getFullYear(), ref.getMonth()+1, SALARY_DAY));
   }
   return fmtDate(target);
 }
@@ -604,17 +610,17 @@ let selectedChartDay = null;
 let openMonthKeys = new Set();
 let openDayKeys = new Set();
 
+// عداد الراتب — يعتمد على db.monthStart (تاريخ آخر إقفال شهر فعلي)، مو على رقم ثابت مكتوب يدويًا
 function renderSalaryCountdown(){
   const today = new Date();
   today.setHours(0,0,0,0);
-  const overrideTarget = parseDate(NEXT_SALARY_OVERRIDE);
-  let target;
-  if(today < overrideTarget){
-    target = overrideTarget;
-  } else {
-    target = new Date(today.getFullYear(), today.getMonth(), SALARY_DAY);
-    if(target <= today){ target = new Date(today.getFullYear(), today.getMonth()+1, SALARY_DAY); }
+
+  const lastPayday = parseDate(db.monthStart);
+  let target = adjustForWeekend(new Date(lastPayday.getFullYear(), lastPayday.getMonth()+1, SALARY_DAY));
+  if(target <= today){
+    target = adjustForWeekend(new Date(target.getFullYear(), target.getMonth()+1, SALARY_DAY));
   }
+
   const diffDays = Math.round((target - today)/86400000);
   document.getElementById('salaryCountdown').textContent = diffDays;
   document.getElementById('salaryDate').textContent = humanDateFull(fmtDate(target));
@@ -821,7 +827,7 @@ document.getElementById('closeDayBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
-// ==== منطق إقفال الشهر الجديد: يعتمد دائمًا على تاريخ الراتب الثابت (27/28) ====
+// ==== منطق إقفال الشهر: يعتمد على db.monthStart وتاريخ الراتب (27، معدّل لعطلة نهاية الأسبوع) ====
 
 function performMonthClose(newMonthStart){
   const endDate = addDays(newMonthStart, -1);
