@@ -272,11 +272,23 @@ select.edit-input{appearance:none;}
 }
 .early-close-box{
   width:100%;max-width:320px;background:var(--card);border:1px solid var(--line);
-  border-radius:16px;padding:22px;text-align:center;
+  border-radius:16px;padding:22px;text-align:center;max-height:90vh;overflow-y:auto;
 }
 .early-close-box .ec-title{font-size:14px;margin-bottom:14px;line-height:1.6;}
 .early-close-box .btn{width:100%;margin-bottom:8px;}
 .early-close-box .ec-cancel{background:transparent;color:var(--muted2);}
+.early-close-box .ec-sub{display:block;font-size:11.5px;color:var(--muted);margin-top:6px;font-weight:400;}
+.early-close-box .ec-note{display:block;font-size:10.5px;font-weight:400;opacity:.8;margin-top:2px;line-height:1.5;}
+.early-close-box .btn:disabled{opacity:.45;cursor:not-allowed;}
+.ec-custom{border-top:1px solid var(--line);margin:4px 0 12px;padding-top:12px;text-align:right;}
+.ec-custom .ec-lbl{font-size:12px;color:var(--muted);margin-bottom:6px;}
+.ec-custom input[type=date]{
+  background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--text);
+  padding:10px 12px;font-size:14px;font-family:inherit;width:100%;color-scheme:dark;margin-bottom:8px;
+}
+.ec-custom .ec-preview{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;min-height:16px;}
+.undo-row{margin-bottom:14px;}
+.undo-row .btn{width:100%;padding:9px 12px;font-size:12px;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -363,6 +375,7 @@ select.edit-input{appearance:none;}
     <button class="btn btn-ghost" id="closeDayBtn">🔒 إقفال اليوم</button>
     <button class="btn btn-danger-ghost" id="closeMonthBtn">🗄️ إقفال الشهر</button>
   </div>
+  <div class="undo-row"><button class="btn btn-ghost" id="undoCloseBtn" style="display:none;"></button></div>
 
   <div class="search-box">
     <span class="sic">🔍</span>
@@ -480,21 +493,11 @@ function adjustForWeekend(d){
   return r;
 }
 
-// يحسب أقرب تاريخ راتب (معدّل لعطلة نهاية الأسبوع) يقع بتاريخ refDateStr أو بعده
-function nextSalaryOnOrAfter(refDateStr){
-  const ref = parseDate(refDateStr);
-  ref.setHours(0,0,0,0);
-  let target = adjustForWeekend(new Date(ref.getFullYear(), ref.getMonth(), SALARY_DAY));
-  if(target < ref){
-    target = adjustForWeekend(new Date(ref.getFullYear(), ref.getMonth()+1, SALARY_DAY));
-  }
-  return fmtDate(target);
-}
-
-// يحسب تاريخ إقفال الشهر الحالي (أي تاريخ الراتب اللي يجب أن يبدأ عنده الشهر الجديد) بناءً على بداية الشهر الحالي المفتوح
-function currentMonthCloseBoundary(){
-  const dayAfterStart = addDays(db.monthStart, 1);
-  return nextSalaryOnOrAfter(dayAfterStart);
+// تاريخ الراتب المتوقع بعد بداية الشهر الحالي المفتوح (27 من الشهر اللي بعده، معدّل لعطلة نهاية الأسبوع).
+// db.monthStart هو اليوم اللي أنت قفلت فيه الشهر (يعني اليوم اللي نزل فيه الراتب فعليًا)، فالراتب اللي بعده دايمًا بالشهر التالي.
+function expectedNextSalary(){
+  const start = parseDate(db.monthStart);
+  return fmtDate(adjustForWeekend(new Date(start.getFullYear(), start.getMonth()+1, SALARY_DAY)));
 }
 
 let db = { monthStart: START_DATE, days:{}, closedMonths:[] };
@@ -615,8 +618,7 @@ function renderSalaryCountdown(){
   const today = new Date();
   today.setHours(0,0,0,0);
 
-  const lastPayday = parseDate(db.monthStart);
-  let target = adjustForWeekend(new Date(lastPayday.getFullYear(), lastPayday.getMonth()+1, SALARY_DAY));
+  let target = parseDate(expectedNextSalary());
   if(target <= today){
     target = adjustForWeekend(new Date(target.getFullYear(), target.getMonth()+1, SALARY_DAY));
   }
@@ -827,9 +829,13 @@ document.getElementById('closeDayBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
-// ==== منطق إقفال الشهر: يعتمد على db.monthStart وتاريخ الراتب (27، معدّل لعطلة نهاية الأسبوع) ====
+// ==== إقفال الشهر: يدوي دايمًا — أنت اللي تقرر متى، وتاريخ البداية الجديد أنت اللي تختاره ====
 
 function performMonthClose(newMonthStart){
+  if(newMonthStart <= db.monthStart){
+    alert('ما يمكن الإقفال: تاريخ البداية الجديد لازم يكون بعد بداية الشهر الحالي (' + humanDate(db.monthStart) + ')');
+    return;
+  }
   const endDate = addDays(newMonthStart, -1);
   const monthDates = dateRange(db.monthStart, endDate);
   let totalSpent=0, totalSaved=0;
@@ -856,65 +862,154 @@ function performMonthClose(newMonthStart){
   renderAll();
 }
 
-function openEarlyCloseModal(boundary){
+function daysWord(n){
+  if(n===1) return 'يوم';
+  if(n===2) return 'يومين';
+  if(n>=3 && n<=10) return n+' أيام';
+  return n+' يوم';
+}
+
+// يوضّح لك قبل الإقفال وش بالضبط بينتقل للأرشيف لو بدأ الشهر الجديد من newStart
+function closePreviewText(newStart){
+  const endDate = addDays(newStart, -1);
+  const dates = dateRange(db.monthStart, endDate);
+  let total = 0;
+  dates.forEach(ds=>{ total += dayTotal(db.days[ds]); });
+  const range = dates.length===1 ? humanDate(db.monthStart) : `${humanDate(db.monthStart)} – ${humanDate(endDate)}`;
+  return `ينقل ${daysWord(dates.length)} للأرشيف (${range}) · ${Math.round(total)} ريال`;
+}
+
+function openCloseMonthModal(){
+  const t = todayStr();
+  const tomorrow = addDays(t, 1);
+  const salaryDate = expectedNextSalary();
+  const showSalaryOpt = salaryDate < t && salaryDate > db.monthStart;
+
   const overlay = document.createElement('div');
   overlay.className = 'early-close-overlay';
   overlay.innerHTML = `
     <div class="early-close-box">
-      <div class="ec-title">تقفل الشهر قبل يوم الراتب (${humanDate(boundary)})<br>الشهر الجديد يبدأ من وين؟</div>
-      <button class="btn btn-primary" id="ecToday">من اليوم</button>
-      <button class="btn btn-ghost" id="ecTomorrow">من بكرة</button>
+      <div class="ec-title">🗄️ إقفال الشهر<span class="ec-sub">الأيام اللي قبل تاريخ البداية الجديد تنتقل للأرشيف. الشهر الجديد يبدأ من وين؟</span></div>
+      <button class="btn btn-primary" id="ecToday">من اليوم (${humanDate(t)})<span class="ec-note" id="ecTodayNote"></span></button>
+      <button class="btn btn-ghost" id="ecTomorrow">من بكرة (${humanDate(tomorrow)})<span class="ec-note" id="ecTomorrowNote"></span></button>
+      ${showSalaryOpt ? `<button class="btn btn-ghost" id="ecSalary">من تاريخ الراتب (${humanDate(salaryDate)})<span class="ec-note" id="ecSalaryNote"></span></button>` : ''}
+      <div class="ec-custom">
+        <div class="ec-lbl">أو اختر تاريخ بداية آخر</div>
+        <input type="date" id="ecCustomDate" min="${addDays(db.monthStart,1)}" max="${tomorrow}">
+        <div class="ec-preview" id="ecCustomNote"></div>
+        <button class="btn btn-ghost" id="ecCustomBtn" disabled>إقفال بهذا التاريخ</button>
+      </div>
       <button class="btn ec-cancel" id="ecCancel">إلغاء</button>
     </div>
   `;
   document.body.appendChild(overlay);
   const cleanup = ()=> overlay.remove();
-  document.getElementById('ecToday').addEventListener('click', ()=>{
-    cleanup();
-    performMonthClose(todayStr());
+
+  const wireChoice = (btnId, noteId, startDate)=>{
+    const btn = overlay.querySelector('#'+btnId);
+    if(!btn) return;
+    const note = overlay.querySelector('#'+noteId);
+    const valid = startDate > db.monthStart;
+    note.textContent = valid ? closePreviewText(startDate) : 'ما يمكن — الشهر الحالي يبدأ من نفس هذا التاريخ';
+    btn.disabled = !valid;
+    btn.addEventListener('click', ()=>{ cleanup(); performMonthClose(startDate); });
+  };
+  wireChoice('ecToday', 'ecTodayNote', t);
+  wireChoice('ecTomorrow', 'ecTomorrowNote', tomorrow);
+  if(showSalaryOpt) wireChoice('ecSalary', 'ecSalaryNote', salaryDate);
+
+  const customInput = overlay.querySelector('#ecCustomDate');
+  const customNote = overlay.querySelector('#ecCustomNote');
+  const customBtn = overlay.querySelector('#ecCustomBtn');
+  const customValid = v => !!v && v > db.monthStart && v <= tomorrow;
+  customInput.addEventListener('change', ()=>{
+    const v = customInput.value;
+    customBtn.disabled = !customValid(v);
+    customNote.textContent = customValid(v) ? closePreviewText(v) : 'اختر تاريخ بعد بداية الشهر الحالي';
   });
-  document.getElementById('ecTomorrow').addEventListener('click', ()=>{
+  customBtn.addEventListener('click', ()=>{
+    const v = customInput.value;
+    if(!customValid(v)) return;
     cleanup();
-    performMonthClose(addDays(todayStr(),1));
+    performMonthClose(v);
   });
-  document.getElementById('ecCancel').addEventListener('click', cleanup);
+  overlay.querySelector('#ecCancel').addEventListener('click', cleanup);
 }
 
-const closeMonthBtn = document.getElementById('closeMonthBtn');
-closeMonthBtn.addEventListener('click', ()=>{
-  if(closeMonthBtn.dataset.confirm!=='1'){
-    closeMonthBtn.dataset.confirm='1';
-    closeMonthBtn.dataset.origText = closeMonthBtn.textContent;
-    closeMonthBtn.textContent = 'اضغط للتأكيد';
-    closeMonthBtn._confirmTimer = setTimeout(()=>{
-      closeMonthBtn.dataset.confirm='0';
-      closeMonthBtn.textContent = closeMonthBtn.dataset.origText;
-    }, 4000);
+document.getElementById('closeMonthBtn').addEventListener('click', openCloseMonthModal);
+
+// ==== التراجع عن آخر إقفال شهر: يرجّع أيام الشهر المؤرشف للشهر الحالي ====
+
+async function undoLastMonthClose(){
+  if(!db.closedMonths.length) return;
+  const m = db.closedMonths[0];
+
+  Object.keys(m.days).forEach(ds=>{
+    const restored = m.days[ds];
+    const existing = db.days[ds];
+    if(existing){
+      existing.expenses = (restored.expenses || []).concat(existing.expenses || []);
+    } else {
+      db.days[ds] = restored;
+    }
+  });
+  db.monthStart = m.start;
+  db.closedMonths.shift();
+  openMonthKeys.clear();
+  saveDB();
+  setSelectedEntryDate(todayStr());
+  renderAll();
+
+  // نسخة الأرشيف بـ Supabase صارت قديمة — نحاول نحذفها عشان ما تتكرر لو قفلت الشهر مرة ثانية
+  let removed = false;
+  try{
+    const { data, error } = await supa.from('archived_months').delete().eq('month', m.start).select();
+    if(error) console.error('تعذر حذف نسخة الأرشيف من سوباكيس:', error);
+    removed = !error && Array.isArray(data) && data.length > 0;
+  } catch(e){
+    console.error('تعذر الاتصال بسوباكيس لحذف نسخة الأرشيف:', e);
+  }
+  if(!removed){
+    alert(`تم التراجع ✅ أيام ${humanDate(m.start)} – ${humanDate(m.end)} رجعت للشهر الحالي.\n\nملاحظة: ما تأكدت إن نسخة الأرشيف القديمة انحذفت من Supabase (يمكن ما فيه صلاحية حذف). لو تبي تنظفها، افتح جدول archived_months وامسح الصف اللي month فيه ${m.start}.`);
+  }
+}
+
+function renderUndoCloseBtn(){
+  const btn = document.getElementById('undoCloseBtn');
+  if(!btn) return;
+  if(!db.closedMonths.length){ btn.style.display = 'none'; return; }
+  btn.style.display = 'block';
+  if(btn.dataset.confirm === '1') return;
+  const m = db.closedMonths[0];
+  btn.textContent = `↩️ تراجع عن آخر إقفال شهر (${humanDate(m.start)} – ${humanDate(m.end)})`;
+}
+
+const undoCloseBtn = document.getElementById('undoCloseBtn');
+undoCloseBtn.addEventListener('click', ()=>{
+  if(undoCloseBtn.dataset.confirm !== '1'){
+    undoCloseBtn.dataset.confirm = '1';
+    undoCloseBtn.textContent = 'اضغط مرة ثانية للتأكيد — يرجّع أيام آخر شهر مؤرشف للشهر الحالي';
+    undoCloseBtn._timer = setTimeout(()=>{
+      undoCloseBtn.dataset.confirm = '0';
+      renderUndoCloseBtn();
+    }, 5000);
     return;
   }
-  clearTimeout(closeMonthBtn._confirmTimer);
-  closeMonthBtn.dataset.confirm='0';
-  closeMonthBtn.textContent = closeMonthBtn.dataset.origText;
-
-  const t = todayStr();
-  const boundary = currentMonthCloseBoundary();
-
-  if(t < boundary){
-    openEarlyCloseModal(boundary);
-  } else {
-    performMonthClose(boundary);
-  }
+  clearTimeout(undoCloseBtn._timer);
+  undoCloseBtn.dataset.confirm = '0';
+  undoLastMonthClose();
 });
 
+// تنبيه فقط — ما يقفل شي تلقائيًا. يظهر من يوم الراتب المتوقع وما بعده لو الشهر لسا مفتوح.
 function renderMonthCloseReminder(){
   const box = document.getElementById('monthCloseBanner');
-  const boundary = currentMonthCloseBoundary();
+  const salaryDate = expectedNextSalary();
   const t = todayStr();
-  if(t > boundary){
+  if(t >= salaryDate){
     box.style.display = 'block';
     box.innerHTML = `<div class="unclosed-banner" onclick="document.getElementById('actionsRow').scrollIntoView({behavior:'smooth',block:'center'})">
-      <div class="ub-l"><span>🔔</span><span>تجاوزت تاريخ إقفال الشهر (<b>${humanDate(boundary)}</b>) — الشهر الحالي يحتاج إقفال</span></div>
-      <div class="ub-r">إقفاله ←</div>
+      <div class="ub-l"><span>🔔</span><span>حان موعد الراتب (<b>${humanDate(salaryDate)}</b>) — لو نزل راتبك اقفل الشهر عشان تبدأ شهر جديد. ما يتقفل شي تلقائيًا.</span></div>
+      <div class="ub-r">إقفال الشهر ←</div>
     </div>`;
   } else {
     box.style.display = 'none';
@@ -1320,6 +1415,7 @@ function renderAll(){
   renderLog();
   renderUnclosedBanner();
   renderMonthCloseReminder();
+  renderUndoCloseBtn();
 }
 
 let appStarted = false;
