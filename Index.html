@@ -974,13 +974,18 @@ async function undoLastMonthClose(){
   }
 }
 
+// يختفي الزر تلقائيًا من أول يوم بالشهر اللي بعد الإقفال — يعطيك طول الشهر فرصة تتراجع، وبعدها يختفي لحاله.
+// هذا تعديل بالعرض بس، ما يلمس الأرشيف ولا بياناتك — تختفي الزر لا يعني ضياع شي.
 function renderUndoCloseBtn(){
   const btn = document.getElementById('undoCloseBtn');
   if(!btn) return;
   if(!db.closedMonths.length){ btn.style.display = 'none'; return; }
+  const m = db.closedMonths[0];
+  const closedOn = parseDate(addDays(m.end, 1)); // تاريخ الإقفال تقريبًا
+  const hideFrom = fmtDate(new Date(closedOn.getFullYear(), closedOn.getMonth()+1, 1));
+  if(todayStr() >= hideFrom){ btn.style.display = 'none'; return; }
   btn.style.display = 'block';
   if(btn.dataset.confirm === '1') return;
-  const m = db.closedMonths[0];
   btn.textContent = `↩️ تراجع عن آخر إقفال شهر (${humanDate(m.start)} – ${humanDate(m.end)})`;
 }
 
